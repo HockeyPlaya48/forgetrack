@@ -1,0 +1,225 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Global Catch-All Safety Net ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helper Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.firebase.sign_in_provider == 'google.com'
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'kenneytyler14@gmail.com' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Users Collection Rules ---
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && request.auth.uid == userId && (
+        // Automatic assignment for standard employees
+        (incoming().role == 'employee' && incoming().email == request.auth.token.email) ||
+        // Bootstrapped admin
+        (request.auth.token.email == 'kenneytyler14@gmail.com' && incoming().role == 'admin')
+      ) && isValidUser(incoming());
+
+      allow update: if isSignedIn() && (
+        isAdmin() || (
+          request.auth.uid == userId && 
+          incoming().role == existing().role && 
+          incoming().email == existing().email && 
+          isValidUser(incoming())
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt']) &&
+             data.keys().size() == 5 &&
+             data.uid == request.auth.uid &&
+             data.uid is string &&
+             data.email is string && data.email.size() <= 200 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.role in ['employee', 'admin'];
+    }
+
+    // --- Jobs Collection Rules ---
+    match /jobs/{jobId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin() && isValidId(jobId);
+    }
+
+    // --- Settings Collection Rules ---
+    match /settings/{settingId} {
+      allow get: if isSignedIn();
+      allow write: if isAdmin() && isValidId(settingId);
+    }
+
+    // --- Time Entries Collection Rules ---
+    match /time_entries/{entryId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // List query security enforced on server-side
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      allow create: if isSignedIn() && isValidId(entryId) && (
+        // Admin creating approved time-off entries on behalf of any employee
+        (isAdmin() && isValidTimeEntry(incoming()) && incoming().isApproved == true && incoming().status == 'completed' && incoming().isManualEdit == false) ||
+        // Employee self-create
+        (incoming().userId == request.auth.uid &&
+         isValidTimeEntry(incoming()) &&
+         incoming().isApproved == false &&
+         (
+           // Clock-in flow
+           (incoming().isManualEdit == false && incoming().status == 'active') ||
+           // Manual entry declaration (needs approval)
+           (incoming().isManualEdit == true && incoming().status == 'pending_approval')
+         )
+        )
+      );
+
+      allow update: if isVerified() && isValidId(entryId) && (
+        isAdmin() || (
+          // Employee same-day edit rule
+          existing().userId == request.auth.uid &&
+          incoming().userId == request.auth.uid &&
+          isValidTimeEntry(incoming()) &&
+          // Enforce 24-hour window from creation (same-day restriction)
+          (request.time.toMillis() - existing().createdAt.toMillis() < 24 * 60 * 60 * 1000) &&
+          // Cannot self-approve manual edits
+          incoming().isApproved == existing().isApproved &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            // Action 1: Clock Out or Session State updates
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'clockOutTime', 'clockOutCoords', 'status', 'lunchStart', 'lunchStartCoords',
+              'lunchEnd', 'lunchEndCoords', 'lunchDuration', 'travelTimeIn', 'travelTimeOut',
+              'updatedAt', 'description', 'jobId', 'jobName', 'costCode'
+            ]) ||
+            // Action 2: Manual edit request submission
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'jobId', 'jobName', 'costCode', 'description', 'isManualEdit', 
+              'status', 'editRequestedAt', 'updatedAt'
+            ])
+          )
+        )
+      );
+
+      // Same-day delete by owner (needs approval window / unapproved state)
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        existing().userId == request.auth.uid &&
+        existing().isApproved == false &&
+        (request.time.toMillis() - existing().createdAt.toMillis() < 24 * 60 * 60 * 1000)
+      );
+    }
+
+    // --- Biweekly Timecards Collection Rules ---
+    match /timecards/{timecardId} {
+      // Employee reads their own; admin reads all
+      allow get: if isSignedIn() && (
+        resource.data.employeeId == request.auth.uid || isAdmin()
+      );
+      allow list: if isAdmin();
+
+      // Employee creates their own timecard doc when signing
+      allow create: if isSignedIn() &&
+        timecardId == incoming().employeeId + '_' + incoming().periodStart &&
+        incoming().employeeId == request.auth.uid &&
+        incoming().employeeSigned == true &&
+        incoming().adminSigned == false &&
+        incoming().employeeSignatureName is string &&
+        incoming().employeeSignatureName.size() > 0 &&
+        incoming().employeeSignatureName.size() <= 200 &&
+        incoming().periodStart is string &&
+        incoming().periodStart.size() == 10 &&
+        incoming().periodEnd is string &&
+        incoming().periodEnd.size() == 10;
+
+      // Employee updates own (re-sign); admin countersigns
+      allow update: if isSignedIn() && (
+        isAdmin() || (
+          existing().employeeId == request.auth.uid &&
+          incoming().employeeId == request.auth.uid &&
+          incoming().adminSigned == false
+        )
+      );
+    }
+
+    // --- Reminders Collection Rules ---
+    match /reminders/{reminderId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Time Off Requests Collection Rules ---
+    match /time_off_requests/{requestId} {
+      allow get: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.employeeId == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+        incoming().employeeId == request.auth.uid &&
+        isValidTimeOffRequest(incoming());
+
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    function isValidTimeOffRequest(data) {
+      return data.employeeId is string && data.employeeId.size() <= 128 &&
+             data.employeeName is string && data.employeeName.size() <= 200 &&
+             data.startDate is string && data.startDate.size() == 10 &&
+             data.endDate is string && data.endDate.size() == 10 &&
+             data.type in ['pto', 'unpaid'] &&
+             data.reason is string && data.reason.size() <= 1000 &&
+             data.hoursPerDay is number &&
+             data.status == 'pending' &&
+             data.adminNotes == null &&
+             data.reviewedById == null &&
+             data.reviewedByName == null &&
+             data.reviewedAt == null;
+    }
+
+    function isValidTimeEntry(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.employeeName is string && data.employeeName.size() <= 200 &&
+             data.date is string && data.date.size() == 10 &&
+             data.jobId is string && data.jobId.size() <= 128 &&
+             data.jobName is string && data.jobName.size() <= 200 &&
+             data.costCode is string && data.costCode.size() <= 100 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.status in ['active', 'completed', 'pending_approval'] &&
+             data.isManualEdit is bool &&
+             data.isApproved is bool;
+    }
+  }
+}

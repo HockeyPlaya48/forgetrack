@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information, role, and profile details.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique user ID from Firebase Auth" },
+        "email": { "type": "string", "format": "email", "description": "User email address" },
+        "name": { "type": "string", "description": "The display name of the user" },
+        "role": { "type": "string", "enum": ["employee", "admin"], "description": "Role-based access role" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when user was created in the database" }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Job": {
+      "title": "Job Site",
+      "description": "Job site details, including GPS coordinates for clock-in verification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the job site" },
+        "name": { "type": "string", "description": "Name of the project/job site" },
+        "address": { "type": "string", "description": "Physical address of the job site" },
+        "latitude": { "type": "number", "description": "GPS latitude of the job site center" },
+        "longitude": { "type": "number", "description": "GPS longitude of the job site center" },
+        "radius": { "type": "number", "description": "Acceptable distance radius in meters (typically 100m)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when job site was created" }
+      },
+      "required": ["id", "name", "address", "latitude", "longitude", "radius", "createdAt"]
+    },
+    "TimeEntry": {
+      "title": "Time Entry",
+      "description": "Clock in/out records, breaks, travel tracking, descriptions, and audit flags.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique time entry ID" },
+        "userId": { "type": "string", "description": "The employee user ID who logged this work" },
+        "employeeName": { "type": "string", "description": "The employee name at the time of logging" },
+        "date": { "type": "string", "format": "date", "description": "Local date of work (YYYY-MM-DD) for indexing" },
+        "jobId": { "type": "string", "description": "ID of the associated job site" },
+        "jobName": { "type": "string", "description": "Name of the associated job site" },
+        "costCode": { "type": "string", "description": "The select cost code for accounting" },
+        "description": { "type": "string", "description": "Detailed description of work performed" },
+        "status": { "type": "string", "enum": ["active", "completed", "pending_approval"], "description": "Current status of entry" },
+        "clockInTime": { "type": "string", "format": "date-time", "description": "Timestamp of clocking-in" },
+        "clockInCoords": { "type": "object", "description": "Latitude and longitude of clock-in location" },
+        "clockOutTime": { "type": "string", "format": "date-time", "description": "Timestamp of clocking-out" },
+        "clockOutCoords": { "type": "object", "description": "Latitude and longitude of clock-out location" },
+        "travelTimeIn": { "type": "number", "description": "Travel minutes to job site" },
+        "travelTimeOut": { "type": "number", "description": "Travel minutes from job site" },
+        "lunchStart": { "type": "string", "format": "date-time", "description": "Timestamp when user went on lunch break" },
+        "lunchEnd": { "type": "string", "format": "date-time", "description": "Timestamp when user returned from lunch break" },
+        "lunchDuration": { "type": "number", "description": "Total deducted lunch break duration in minutes" },
+        "isManualEdit": { "type": "boolean", "description": "Flag showing sheet was manually edited/created" },
+        "isApproved": { "type": "boolean", "description": "Flag showing whether a manual edit was approved by admin" },
+        "editRequestedAt": { "type": "string", "format": "date-time", "description": "Timestamp when user submitted manual change request" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when this record was created" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when this record was updated" }
+      },
+      "required": ["id", "userId", "employeeName", "date", "jobId", "jobName", "costCode", "description", "status", "clockInTime", "clockInCoords", "isManualEdit", "isApproved", "createdAt", "updatedAt"]
+    },
+    "Setting": {
+      "title": "App Settings",
+      "description": "Global settings such as operational configurations and auto-clockout limits.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The setting ID (e.g., 'general')" },
+        "autoClockOutTime": { "type": "string", "description": "Configurable clock out hour (e.g., '18:00')" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when configuration was modified" }
+      },
+      "required": ["id", "autoClockOutTime", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Root collection for user account configurations, including roles."
+    },
+    "jobs/{jobId}": {
+      "schema": "Job",
+      "description": "Global collection of active construction / project job sites."
+    },
+    "time_entries/{entryId}": {
+      "schema": "TimeEntry",
+      "description": "Employee logs containing work time tracking details."
+    },
+    "settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Configuration collection containing global application parameters."
+    }
+  }
+}
