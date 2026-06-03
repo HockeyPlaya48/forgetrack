@@ -233,6 +233,14 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [showCostCodeDropdown]);
 
+  // When a session becomes active, seed cost code + description from the entry
+  useEffect(() => {
+    if (activeEntry) {
+      setSelectedCostCode(activeEntry.costCode || COST_CODES[0]);
+      setDescription(activeEntry.description || '');
+    }
+  }, [activeEntry?.id]);
+
   // Live Subscription of worker logs
   useEffect(() => {
     const q = query(
@@ -418,13 +426,14 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       return;
     }
 
-    const updatedDescription = `${activeEntry.description} [Manual Clock-Out: ${manualClockOutTime} — ${manualClockOutNote}]`;
+    const updatedDescription = `${description} [Manual Clock-Out: ${manualClockOutTime} — ${manualClockOutNote}]`;
 
     const payload = {
       ...activeEntry,
       clockOutTime: clockOutDate,
       clockOutCoords: null,
       status: 'completed' as const,
+      costCode: selectedCostCode,
       description: updatedDescription,
       travelTimeOut: Number(travelOut) || 0,
       updatedAt: new Date()
@@ -514,6 +523,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       clockOutTime: clockOutNow,
       clockOutCoords: clockOutCoordsPTO,
       status: 'completed' as const,
+      costCode: selectedCostCode,
+      description: description,
       travelTimeOut: Number(travelOut) || 0,
       updatedAt: clockOutNow,
     };
@@ -564,8 +575,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
 
   // Clock In Action Handler — GPS is captured but never blocks clock-in
   const handleClockIn = async () => {
-    if (!selectedJobId || !selectedCostCode || !description.trim()) {
-      alert('Daily time entry requires: Job Selection, Cost Code, and a description of work.');
+    if (!selectedJobId) {
+      alert('Please select a job site before clocking in.');
       return;
     }
 
@@ -592,8 +603,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       date: new Date().toISOString().split('T')[0],
       jobId: activeJob.id,
       jobName: activeJob.name,
-      costCode: selectedCostCode,
-      description: description,
+      costCode: COST_CODES[0],
+      description: '',
       status: 'active',
       clockInTime: new Date(),
       clockInCoords,
@@ -616,7 +627,6 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     if (isOnline) {
       try {
         await addDoc(collection(db, 'time_entries'), payload);
-        setDescription('');
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, 'time_entries');
       }
@@ -624,7 +634,6 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       queueOfflineAction({ action: 'create', data: payload });
       alert('Offline Mode: Your clock-in has been cached locally. Ensure database synchronizations when online!');
       setActiveEntry(payload as any);
-      setDescription('');
     }
   };
 
@@ -648,6 +657,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       clockOutTime: new Date(),
       clockOutCoords,
       status: 'completed' as const,
+      costCode: selectedCostCode,
+      description: description,
       travelTimeOut: Number(travelOut) || 0,
       updatedAt: new Date()
     };
@@ -656,6 +667,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       try {
         await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
         setTravelOut(0);
+        setDescription('');
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
       }
@@ -663,6 +675,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
       setActiveEntry(null);
       setTravelOut(0);
+      setDescription('');
       alert('Offline Mode: Your clock-out has been cached locally.');
     }
   };
@@ -1098,11 +1111,95 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   </div>
                 </div>
 
+                {/* Cost Code + Work Description — filled before clocking out */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-blue-500" />
+                    Job Details (Required Before Clock-Out)
+                  </p>
+
+                  {/* Searchable cost code */}
+                  <div className="relative" ref={costCodeRef}>
+                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                      Cost Code
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowCostCodeDropdown(v => !v); setCostCodeSearch(''); }}
+                      className="flex items-center justify-between w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500 text-left"
+                    >
+                      <span className="truncate">{selectedCostCode}</span>
+                      {showCostCodeDropdown
+                        ? <ChevronUp className="w-4 h-4 shrink-0 text-gray-400 ml-2" />
+                        : <ChevronDown className="w-4 h-4 shrink-0 text-gray-400 ml-2" />}
+                    </button>
+
+                    {showCostCodeDropdown && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                        <div className="p-2 border-b border-gray-100">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search cost codes..."
+                              value={costCodeSearch}
+                              onChange={e => setCostCodeSearch(e.target.value)}
+                              className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-gray-50"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto">
+                          {(() => {
+                            const filtered = costCodeSearch.trim()
+                              ? COST_CODES.filter(c => c.toLowerCase().includes(costCodeSearch.toLowerCase()))
+                              : COST_CODES;
+                            return filtered.length === 0 ? (
+                              <div className="px-3 py-4 text-xs text-gray-400 text-center italic">
+                                No codes match "{costCodeSearch}"
+                              </div>
+                            ) : filtered.map(code => (
+                              <button
+                                key={code}
+                                type="button"
+                                onClick={() => { setSelectedCostCode(code); setShowCostCodeDropdown(false); setCostCodeSearch(''); }}
+                                className={`w-full text-left px-3 py-2.5 text-xs transition-colors border-b border-gray-50 last:border-0 ${
+                                  selectedCostCode === code ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >{code}</button>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                      Work Description <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      placeholder="Describe the work completed on this shift..."
+                      className="block w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
+                    />
+                    {!description.trim() && (
+                      <p className="mt-1 text-[11px] text-amber-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        Required before you can clock out.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Clock Out Trigger */}
                 <button
                   type="button"
                   onClick={handleClockOut}
-                  disabled={!!activeEntry.lunchStart}
+                  disabled={!!activeEntry.lunchStart || !description.trim()}
                   className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 active:translate-y-px transition-all font-bold text-white text-base py-5 rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   id="clockout-trigger-btn"
                 >
@@ -1373,10 +1470,9 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   </div>
                 )}
 
-              {!showPTODayForm && (<><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
+              {!showPTODayForm && (<><div>
                     <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
-                      1. Select Assigned Job Site
+                      1. Select Job Site
                     </label>
                     <select
                       value={selectedJobId}
@@ -1391,77 +1487,6 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                       ))}
                     </select>
                   </div>
-
-                  <div className="relative" ref={costCodeRef}>
-                    <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
-                      2. Cost Code Allocation
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCostCodeDropdown(v => !v);
-                        setCostCodeSearch('');
-                      }}
-                      className="flex items-center justify-between w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-left"
-                      id="cost-code-select"
-                    >
-                      <span className="truncate">{selectedCostCode}</span>
-                      {showCostCodeDropdown
-                        ? <ChevronUp className="w-4 h-4 shrink-0 text-gray-400 ml-2" />
-                        : <ChevronDown className="w-4 h-4 shrink-0 text-gray-400 ml-2" />}
-                    </button>
-
-                    {showCostCodeDropdown && (
-                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
-                        {/* Search input */}
-                        <div className="p-2 border-b border-gray-100">
-                          <div className="relative">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                            <input
-                              type="text"
-                              autoFocus
-                              placeholder="Search cost codes..."
-                              value={costCodeSearch}
-                              onChange={e => setCostCodeSearch(e.target.value)}
-                              className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-gray-50"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Filtered options */}
-                        <div className="max-h-52 overflow-y-auto">
-                          {(() => {
-                            const filtered = costCodeSearch.trim()
-                              ? COST_CODES.filter(c => c.toLowerCase().includes(costCodeSearch.toLowerCase()))
-                              : COST_CODES;
-                            return filtered.length === 0 ? (
-                              <div className="px-3 py-4 text-xs text-gray-400 text-center italic">
-                                No cost codes match "{costCodeSearch}"
-                              </div>
-                            ) : filtered.map(code => (
-                              <button
-                                key={code}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedCostCode(code);
-                                  setShowCostCodeDropdown(false);
-                                  setCostCodeSearch('');
-                                }}
-                                className={`w-full text-left px-3 py-2.5 text-xs transition-colors border-b border-gray-50 last:border-0 ${
-                                  selectedCostCode === code
-                                    ? 'bg-blue-50 text-blue-700 font-semibold'
-                                    : 'text-gray-700 hover:bg-gray-50'
-                                }`}
-                              >
-                                {code}
-                              </button>
-                            ));
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
                 {/* Travel Time — Auto-calculated read-only */}
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
@@ -1494,33 +1519,11 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   )}
                 </div>
 
-                {/* Description Input */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
-                    4. Daily Work Description (Mandatory)
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    required
-                    placeholder="Provide a detailed log of tasks planned or completed for this shift..."
-                    className="block w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    id="clockin-description-textarea"
-                  />
-                  {!description.trim() && (
-                    <p className="mt-1.5 text-[11px] text-blue-600 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      A job description is required prior to clocking in.
-                    </p>
-                  )}
-                </div>
-
                 {/* Clock In Button */}
                 <button
                   type="button"
                   onClick={handleClockIn}
-                  disabled={!description.trim() || gpsLoading || !!jobsLoadError || jobs.length === 0}
+                  disabled={gpsLoading || !!jobsLoadError || jobs.length === 0}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 active:translate-y-px transition-all font-bold text-white text-base py-5 rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   id="clockin-trigger-btn"
                 >
