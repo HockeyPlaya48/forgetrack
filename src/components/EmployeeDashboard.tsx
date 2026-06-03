@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   collection,
   query,
@@ -34,7 +34,8 @@ import {
   TimerOff,
   ChevronDown,
   ChevronUp,
-  Plane
+  Plane,
+  Search
 } from 'lucide-react';
 
 interface EmployeeDashboardProps {
@@ -108,6 +109,11 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
 
   // Company travel coverage from settings (default 30 min)
   const [companyTravelCoverageMinutes, setCompanyTravelCoverageMinutes] = useState<number>(30);
+
+  // Cost code searchable dropdown
+  const [costCodeSearch, setCostCodeSearch] = useState('');
+  const [showCostCodeDropdown, setShowCostCodeDropdown] = useState(false);
+  const costCodeRef = useRef<HTMLDivElement>(null);
 
   // Active dashboard tab
   const [activeTab, setActiveTab] = useState<'clock' | 'timecards' | 'timeoff'>('clock');
@@ -213,6 +219,19 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     const rawMinutes = (distKm / 40) * 60 + 5;
     setTravelOut(Math.round(rawMinutes / 5) * 5);
   }, [activeEntry?.jobId, jobs, user.homeLatitude, user.homeLongitude]);
+
+  // Close cost code dropdown on outside click
+  useEffect(() => {
+    if (!showCostCodeDropdown) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (costCodeRef.current && !costCodeRef.current.contains(e.target as Node)) {
+        setShowCostCodeDropdown(false);
+        setCostCodeSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [showCostCodeDropdown]);
 
   // Live Subscription of worker logs
   useEffect(() => {
@@ -1373,22 +1392,74 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                     </select>
                   </div>
 
-                  <div>
+                  <div className="relative" ref={costCodeRef}>
                     <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
                       2. Cost Code Allocation
                     </label>
-                    <select
-                      value={selectedCostCode}
-                      onChange={(e) => setSelectedCostCode(e.target.value)}
-                      className="block w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCostCodeDropdown(v => !v);
+                        setCostCodeSearch('');
+                      }}
+                      className="flex items-center justify-between w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-left"
                       id="cost-code-select"
                     >
-                      {COST_CODES.map((code) => (
-                        <option key={code} value={code}>
-                          {code}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate">{selectedCostCode}</span>
+                      {showCostCodeDropdown
+                        ? <ChevronUp className="w-4 h-4 shrink-0 text-gray-400 ml-2" />
+                        : <ChevronDown className="w-4 h-4 shrink-0 text-gray-400 ml-2" />}
+                    </button>
+
+                    {showCostCodeDropdown && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                        {/* Search input */}
+                        <div className="p-2 border-b border-gray-100">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search cost codes..."
+                              value={costCodeSearch}
+                              onChange={e => setCostCodeSearch(e.target.value)}
+                              className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-gray-50"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Filtered options */}
+                        <div className="max-h-52 overflow-y-auto">
+                          {(() => {
+                            const filtered = costCodeSearch.trim()
+                              ? COST_CODES.filter(c => c.toLowerCase().includes(costCodeSearch.toLowerCase()))
+                              : COST_CODES;
+                            return filtered.length === 0 ? (
+                              <div className="px-3 py-4 text-xs text-gray-400 text-center italic">
+                                No cost codes match "{costCodeSearch}"
+                              </div>
+                            ) : filtered.map(code => (
+                              <button
+                                key={code}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCostCode(code);
+                                  setShowCostCodeDropdown(false);
+                                  setCostCodeSearch('');
+                                }}
+                                className={`w-full text-left px-3 py-2.5 text-xs transition-colors border-b border-gray-50 last:border-0 ${
+                                  selectedCostCode === code
+                                    ? 'bg-blue-50 text-blue-700 font-semibold'
+                                    : 'text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                {code}
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
