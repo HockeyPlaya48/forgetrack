@@ -115,6 +115,11 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   const [showCostCodeDropdown, setShowCostCodeDropdown] = useState(false);
   const costCodeRef = useRef<HTMLDivElement>(null);
 
+  // Auto lunch return refs — keep entry ref in sync each render to avoid stale closures
+  const activeEntryRef = useRef<TimeEntry | null>(null);
+  const lunchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  activeEntryRef.current = activeEntry;
+
   // Active dashboard tab
   const [activeTab, setActiveTab] = useState<'clock' | 'timecards' | 'timeoff'>('clock');
 
@@ -240,6 +245,56 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       setDescription(activeEntry.description || '');
     }
   }, [activeEntry?.id]);
+
+  // Auto-return from lunch after 75 minutes
+  useEffect(() => {
+    if (lunchTimerRef.current) {
+      clearTimeout(lunchTimerRef.current);
+      lunchTimerRef.current = null;
+    }
+    if (!activeEntry?.lunchStart) return;
+
+    const lunchStartMs = activeEntry.lunchStart.seconds
+      ? activeEntry.lunchStart.seconds * 1000
+      : new Date(activeEntry.lunchStart).getTime();
+    const remaining = (lunchStartMs + 75 * 60 * 1000) - Date.now();
+
+    const doAutoReturn = async () => {
+      const entry = activeEntryRef.current;
+      if (!entry?.lunchStart) return;
+      const startMs = entry.lunchStart.seconds
+        ? entry.lunchStart.seconds * 1000
+        : new Date(entry.lunchStart).getTime();
+      const autoEnd = new Date(startMs + 75 * 60 * 1000);
+      const payload = {
+        ...entry,
+        lunchEnd: autoEnd,
+        lunchEndCoords: null,
+        lunchDuration: (entry.lunchDuration || 0) + 75,
+        lunchStart: null,
+        lunchStartCoords: null,
+        updatedAt: new Date(),
+      };
+      try {
+        await updateDoc(doc(db, 'time_entries', entry.id), payload);
+      } catch (err) {
+        console.error('Auto lunch return failed:', err);
+      }
+    };
+
+    if (remaining <= 0) {
+      doAutoReturn();
+    } else {
+      lunchTimerRef.current = setTimeout(doAutoReturn, remaining);
+    }
+
+    return () => {
+      if (lunchTimerRef.current) {
+        clearTimeout(lunchTimerRef.current);
+        lunchTimerRef.current = null;
+      }
+    };
+  }, [activeEntry?.lunchStart, activeEntry?.id]);
 
   // Live Subscription of worker logs
   useEffect(() => {
@@ -1006,11 +1061,18 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                       {activeEntry.lunchStart ? 'End Lunch (Resume Work)' : 'Clock Out: Go to Lunch'}
                     </button>
 
-                    {activeEntry.lunchStart && (
-                      <div className="text-[11px] text-orange-600 font-mono text-center animate-pulse">
-                        ● On lunch since: {new Date(activeEntry.lunchStart.seconds * 1000 || activeEntry.lunchStart).toLocaleTimeString()}
-                      </div>
-                    )}
+                    {activeEntry.lunchStart && (() => {
+                      const lunchStartMs = activeEntry.lunchStart.seconds
+                        ? activeEntry.lunchStart.seconds * 1000
+                        : new Date(activeEntry.lunchStart).getTime();
+                      const autoReturnTime = new Date(lunchStartMs + 75 * 60 * 1000);
+                      return (
+                        <div className="text-[11px] font-mono text-center space-y-0.5">
+                          <div className="text-orange-600 animate-pulse">● On lunch since: {new Date(lunchStartMs).toLocaleTimeString()}</div>
+                          <div className="text-orange-500">Auto-returns at: {autoReturnTime.toLocaleTimeString()}</div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Manual lunch correction — only show when not currently on lunch */}
                     {!activeEntry.lunchStart && (
