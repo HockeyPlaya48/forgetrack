@@ -6,6 +6,10 @@ export interface UserProfile {
   name: string;
   role: UserRole;
   createdAt: any; // Firestore Timestamp
+  // Home address — set by admin for auto travel-time calculation
+  homeAddress?: string;
+  homeLatitude?: number;
+  homeLongitude?: number;
 }
 
 export interface JobSite {
@@ -54,6 +58,7 @@ export interface TimeEntry {
 export interface AppSettings {
   id: string;
   autoClockOutTime: string; // "18:00"
+  companyTravelCoverageMinutes: number; // default 30
   updatedAt: any;
 }
 

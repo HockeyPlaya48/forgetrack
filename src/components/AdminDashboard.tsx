@@ -62,10 +62,10 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [newJobAddress, setNewJobAddress] = useState('');
   const [newJobLat, setNewJobLat] = useState(37.774929);
   const [newJobLng, setNewJobLng] = useState(-122.419416);
-  const [newJobRadius, setNewJobRadius] = useState(100);
+  const [newJobRadius, setNewJobRadius] = useState(1609);
 
   // Registered employees for the employee filter dropdown
-  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string }[]>([]);
+  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string; homeAddress?: string; homeLatitude?: number; homeLongitude?: number }[]>([]);
 
   // Filters
   const [filterEmployee, setFilterEmployee] = useState('');
@@ -86,6 +86,13 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [denyNotes, setDenyNotes] = useState<Record<string, string>>({});
 
+  // Company travel coverage & employee home address editor
+  const [companyTravelCoverage, setCompanyTravelCoverage] = useState<number>(30);
+  const [selectedEmpForTravel, setSelectedEmpForTravel] = useState<string>('');
+  const [travelHomeAddress, setTravelHomeAddress] = useState<string>('');
+  const [travelHomeLat, setTravelHomeLat] = useState<number>(0);
+  const [travelHomeLng, setTravelHomeLng] = useState<number>(0);
+
   // Map helpers
   const osmEmbedUrl = (lat: number, lng: number) =>
     `https://www.openstreetmap.org/export/embed.html?bbox=${(lng - 0.003).toFixed(6)},${(lat - 0.003).toFixed(6)},${(lng + 0.003).toFixed(6)},${(lat + 0.003).toFixed(6)}&layer=mapnik&marker=${lat},${lng}`;
@@ -94,9 +101,9 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     `https://www.google.com/maps?q=${lat},${lng}`;
 
   const DEFAULT_SITES: JobSite[] = [
-    { id: 'job_site_1', name: 'Golden Gate Retrofit', address: 'Presidio, San Francisco, CA', latitude: 37.819929, longitude: -122.478255, radius: 100, createdAt: new Date() },
-    { id: 'job_site_2', name: 'Downtown Highrise Site', address: '101 California St, San Francisco, CA', latitude: 37.793230, longitude: -122.399580, radius: 100, createdAt: new Date() },
-    { id: 'job_site_3', name: 'SFO Airport Hangar Base', address: 'SFO Airport, San Francisco, CA', latitude: 37.621313, longitude: -122.378955, radius: 100, createdAt: new Date() }
+    { id: 'job_site_1', name: 'Golden Gate Retrofit', address: 'Presidio, San Francisco, CA', latitude: 37.819929, longitude: -122.478255, radius: 1609, createdAt: new Date() },
+    { id: 'job_site_2', name: 'Downtown Highrise Site', address: '101 California St, San Francisco, CA', latitude: 37.793230, longitude: -122.399580, radius: 1609, createdAt: new Date() },
+    { id: 'job_site_3', name: 'SFO Airport Hangar Base', address: 'SFO Airport, San Francisco, CA', latitude: 37.621313, longitude: -122.378955, radius: 1609, createdAt: new Date() }
   ];
 
   const seedDefaultSites = async () => {
@@ -138,13 +145,21 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       const generalSetCard = snapshot.docs.find(doc => doc.id === 'general');
       if (generalSetCard) {
         setAutoLogout(generalSetCard.data().autoClockOutTime || '18:00');
+        setCompanyTravelCoverage(generalSetCard.data().companyTravelCoverageMinutes ?? 30);
       }
     });
 
     // Load all registered employees for the filter dropdown
     const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const employees = snapshot.docs
-        .map(d => ({ uid: d.id, name: d.data().name as string, email: d.data().email as string }))
+        .map(d => ({
+          uid: d.id,
+          name: d.data().name as string,
+          email: d.data().email as string,
+          homeAddress: d.data().homeAddress as string | undefined,
+          homeLatitude: d.data().homeLatitude as number | undefined,
+          homeLongitude: d.data().homeLongitude as number | undefined,
+        }))
         .filter(u => u.name && u.name !== 'Anonymous Worker')
         .sort((a, b) => a.name.localeCompare(b.name));
       setRegisteredEmployees(employees);
@@ -356,9 +371,10 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       await setDoc(doc(db, 'settings', 'general'), {
         id: 'general',
         autoClockOutTime: autoLogout,
+        companyTravelCoverageMinutes: Number(companyTravelCoverage) || 30,
         updatedAt: new Date()
       });
-      triggerToast(`Auto-logout configuration updated to ${autoLogout}!`);
+      triggerToast('Settings saved.');
     } catch (err) {
       console.error(err);
       alert('Failed to save general configuration.');
@@ -368,6 +384,35 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const triggerToast = (text: string) => {
     setNotif(text);
     setTimeout(() => setNotif(null), 4000);
+  };
+
+  // Sync employee travel form when selection changes
+  useEffect(() => {
+    const emp = registeredEmployees.find(e => e.uid === selectedEmpForTravel);
+    if (emp) {
+      setTravelHomeAddress(emp.homeAddress || '');
+      setTravelHomeLat(emp.homeLatitude || 0);
+      setTravelHomeLng(emp.homeLongitude || 0);
+    } else {
+      setTravelHomeAddress('');
+      setTravelHomeLat(0);
+      setTravelHomeLng(0);
+    }
+  }, [selectedEmpForTravel, registeredEmployees]);
+
+  const handleSaveEmployeeTravel = async () => {
+    if (!selectedEmpForTravel) return;
+    try {
+      await updateDoc(doc(db, 'users', selectedEmpForTravel), {
+        homeAddress: travelHomeAddress.trim(),
+        homeLatitude: Number(travelHomeLat) || 0,
+        homeLongitude: Number(travelHomeLng) || 0,
+      });
+      triggerToast('Employee home address updated.');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update employee travel profile.');
+    }
   };
 
   // CSV Data compiler
@@ -450,14 +495,16 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
   // Renders the expandable location history panel for a time entry
   const renderLocationPanel = (entry: any) => {
+    // Include all events that have occurred (regardless of whether GPS was captured)
     const events: { label: string; icon: React.ReactNode; coords: { latitude: number; longitude: number } | null }[] = [
-      { label: 'Clock In', icon: <MapPin className="w-3.5 h-3.5 text-green-600" />, coords: entry.clockInCoords },
-      { label: 'Lunch Start', icon: <Coffee className="w-3.5 h-3.5 text-orange-500" />, coords: entry.lunchStartCoords || null },
-      { label: 'Lunch End', icon: <Coffee className="w-3.5 h-3.5 text-blue-500" />, coords: entry.lunchEndCoords || null },
-      { label: 'Clock Out', icon: <Navigation className="w-3.5 h-3.5 text-red-500" />, coords: entry.clockOutCoords },
-    ].filter(ev => ev.coords);
+      { label: 'Clock In', icon: <MapPin className="w-3.5 h-3.5 text-green-600" />, coords: entry.clockInCoords || null },
+      ...(entry.lunchStart ? [{ label: 'Lunch Start', icon: <Coffee className="w-3.5 h-3.5 text-orange-500" />, coords: entry.lunchStartCoords || null }] : []),
+      ...(entry.lunchEnd ? [{ label: 'Lunch End', icon: <Coffee className="w-3.5 h-3.5 text-blue-500" />, coords: entry.lunchEndCoords || null }] : []),
+      ...(entry.clockOutTime ? [{ label: 'Clock Out', icon: <Navigation className="w-3.5 h-3.5 text-red-500" />, coords: entry.clockOutCoords || null }] : []),
+    ];
 
-    const primaryCoords = entry.clockInCoords;
+    // Use first available GPS fix for the embedded map
+    const primaryCoords = events.find(ev => ev.coords)?.coords || null;
 
     return (
       <div className="bg-blue-50 border-t border-blue-100 px-4 py-4">
@@ -479,20 +526,22 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
           {/* Location event stamps */}
           <div className="flex-1 space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1">Location History</p>
-            {events.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No GPS data recorded for this entry.</p>
-            ) : (
-              events.map((ev, i) => (
-                <div key={i} className="flex items-center justify-between bg-white border border-blue-100 rounded-lg px-3 py-2 text-xs shadow-sm">
-                  <div className="flex items-center gap-2">
-                    {ev.icon}
-                    <span className="font-semibold text-gray-700">{ev.label}</span>
+            {events.map((ev, i) => (
+              <div key={i} className="flex items-center justify-between bg-white border border-blue-100 rounded-lg px-3 py-2 text-xs shadow-sm">
+                <div className="flex items-center gap-2">
+                  {ev.icon}
+                  <span className="font-semibold text-gray-700">{ev.label}</span>
+                  {ev.coords ? (
                     <span className="font-mono text-gray-400 text-[10px]">
-                      {ev.coords!.latitude.toFixed(5)}, {ev.coords!.longitude.toFixed(5)}
+                      {ev.coords.latitude.toFixed(5)}, {ev.coords.longitude.toFixed(5)}
                     </span>
-                  </div>
+                  ) : (
+                    <span className="text-[10px] text-gray-300 italic">No GPS recorded</span>
+                  )}
+                </div>
+                {ev.coords ? (
                   <a
-                    href={gMapsUrl(ev.coords!.latitude, ev.coords!.longitude)}
+                    href={gMapsUrl(ev.coords.latitude, ev.coords.longitude)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-semibold shrink-0"
@@ -500,9 +549,11 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     <ExternalLink className="w-3.5 h-3.5" />
                     Maps
                   </a>
-                </div>
-              ))
-            )}
+                ) : (
+                  <span className="text-[10px] text-gray-300">—</span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -658,25 +709,115 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
               <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">
                 Daily Company Auto-Clockout Hour
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="time"
-                  value={autoLogout}
-                  onChange={(e) => setAutoLogout(e.target.value)}
-                  className="bg-white border border-gray-300 px-2 rounded-lg text-xs text-gray-900 flex-1 focus:outline-none focus:border-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveSettings}
-                  className="bg-blue-600 hover:bg-blue-700 text-[10px] font-bold text-white uppercase px-3 py-1.5 rounded-lg active:translate-y-px cursor-pointer transition-all"
-                >
-                  Save
-                </button>
-              </div>
+              <input
+                type="time"
+                value={autoLogout}
+                onChange={(e) => setAutoLogout(e.target.value)}
+                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-blue-500"
+              />
               <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
                 Workers left clocked in beyond this time will be clipped to this capping limit dynamically.
               </p>
             </div>
+
+            <div>
+              <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">
+                Company Travel Coverage (Minutes)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="240"
+                value={companyTravelCoverage}
+                onChange={(e) => setCompanyTravelCoverage(Number(e.target.value) || 0)}
+                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-blue-500"
+              />
+              <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
+                Company pays this many travel minutes per shift. Travel beyond this is on the employee.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveSettings}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-[10px] font-bold text-white uppercase px-3 py-2 rounded-lg active:translate-y-px cursor-pointer transition-all"
+            >
+              Save Settings
+            </button>
+          </div>
+
+          {/* Employee Home Address Editor */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
+              <Navigation className="w-4 h-4 text-gray-400" />
+              Employee Home Address
+            </h3>
+
+            <div>
+              <label className="block text-[10.5px] text-gray-500 mb-1">Select Employee</label>
+              <select
+                value={selectedEmpForTravel}
+                onChange={(e) => setSelectedEmpForTravel(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+              >
+                <option value="">— Choose employee —</option>
+                {registeredEmployees.map(emp => (
+                  <option key={emp.uid} value={emp.uid}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {selectedEmpForTravel && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10.5px] text-gray-500 mb-1">Home Address</label>
+                  <input
+                    type="text"
+                    placeholder="123 Main St, City, State"
+                    value={travelHomeAddress}
+                    onChange={(e) => setTravelHomeAddress(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1">Latitude</label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={travelHomeLat}
+                      onChange={(e) => setTravelHomeLat(Number(e.target.value))}
+                      className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1">Longitude</label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={travelHomeLng}
+                      onChange={(e) => setTravelHomeLng(Number(e.target.value))}
+                      className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <p className="text-[9.5px] text-gray-400 leading-tight">
+                  Find coordinates via{' '}
+                  <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                    Google Maps
+                  </a>{' '}
+                  (right-click a location → "What's here?")
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveEmployeeTravel}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-xs text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer active:translate-y-px shadow-sm"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  Save Home Address
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Job Sites Creation Card */}
@@ -763,13 +904,13 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
               </div>
 
               <div>
-                <label className="block text-[10.5px] text-gray-500 mb-1">Proximity Bounds (Meters)</label>
+                <label className="block text-[10.5px] text-gray-500 mb-1">Proximity Bounds (Meters) <span className="text-gray-400">— 1 mile = 1609m</span></label>
                 <input
                   type="number"
-                  min="20"
-                  max="1000"
+                  min="100"
+                  max="16090"
                   value={newJobRadius}
-                  onChange={(e) => setNewJobRadius(Number(e.target.value) || 100)}
+                  onChange={(e) => setNewJobRadius(Number(e.target.value) || 1609)}
                   className="w-full bg-white border border-gray-300 text-xs p-1.5 rounded-lg text-gray-900 font-mono focus:outline-none"
                   id="new-job-radius"
                 />
@@ -973,28 +1114,39 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                           "{item.description}"
                         </p>
 
-                        {/* Location stamps */}
-                        {[
-                          { label: 'Clock In', icon: <MapPin className="w-3 h-3 text-green-600" />, coords: item.clockInCoords },
-                          { label: 'Clock Out', icon: <Navigation className="w-3 h-3 text-red-500" />, coords: item.clockOutCoords },
-                        ].filter(ev => ev.coords).map((ev, i) => (
-                          <div key={i} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[10.5px]">
-                            <div className="flex items-center gap-1.5">
-                              {ev.icon}
-                              <span className="font-semibold text-gray-600">{ev.label}</span>
-                              <span className="font-mono text-gray-400">{ev.coords!.latitude.toFixed(4)}, {ev.coords!.longitude.toFixed(4)}</span>
+                        {/* GPS Tracking — all events */}
+                        <div className="border-t border-gray-100 pt-2 space-y-1">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">GPS Tracking</p>
+                          {[
+                            { label: 'Clock In', icon: <MapPin className="w-3 h-3 text-green-600" />, coords: item.clockInCoords || null },
+                            ...(item.lunchStart ? [{ label: 'Lunch Start', icon: <Coffee className="w-3 h-3 text-orange-500" />, coords: item.lunchStartCoords || null }] : []),
+                            ...(item.lunchEnd ? [{ label: 'Lunch End', icon: <Coffee className="w-3 h-3 text-blue-500" />, coords: item.lunchEndCoords || null }] : []),
+                            ...(item.clockOutTime ? [{ label: 'Clock Out', icon: <Navigation className="w-3 h-3 text-red-500" />, coords: item.clockOutCoords || null }] : []),
+                          ].map((ev, i) => (
+                            <div key={i} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[10.5px]">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {ev.icon}
+                                <span className="font-semibold text-gray-600 shrink-0">{ev.label}</span>
+                                {ev.coords ? (
+                                  <span className="font-mono text-gray-400 truncate">{ev.coords.latitude.toFixed(4)}, {ev.coords.longitude.toFixed(4)}</span>
+                                ) : (
+                                  <span className="text-gray-300 italic">No GPS</span>
+                                )}
+                              </div>
+                              {ev.coords ? (
+                                <a
+                                  href={gMapsUrl(ev.coords.latitude, ev.coords.longitude)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 font-semibold shrink-0 ml-2"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Map
+                                </a>
+                              ) : null}
                             </div>
-                            <a
-                              href={gMapsUrl(ev.coords!.latitude, ev.coords!.longitude)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 font-semibold shrink-0"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              Map
-                            </a>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
 
                       {/* Action buttons */}

@@ -106,6 +106,9 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   // Time tracker auto log-out hour (Default 18:00 / 6:00 PM)
   const [autoLogoutHour, setAutoLogoutHour] = useState<number>(18);
 
+  // Company travel coverage from settings (default 30 min)
+  const [companyTravelCoverageMinutes, setCompanyTravelCoverageMinutes] = useState<number>(30);
+
   // Active dashboard tab
   const [activeTab, setActiveTab] = useState<'clock' | 'timecards' | 'timeoff'>('clock');
 
@@ -135,9 +138,9 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   // Fetch Job Sites & configuration
   useEffect(() => {
     const defaultSiteList: JobSite[] = [
-      { id: 'job_site_1', name: 'Golden Gate Retrofit', address: 'Presidio, San Francisco, CA', latitude: 37.819929, longitude: -122.478255, radius: 100, createdAt: new Date() },
-      { id: 'job_site_2', name: 'Downtown Highrise Site', address: '101 California St, San Francisco, CA', latitude: 37.793230, longitude: -122.399580, radius: 100, createdAt: new Date() },
-      { id: 'job_site_3', name: 'SFO Airport Hangar Base', address: 'SFO Airport, San Francisco, CA', latitude: 37.621313, longitude: -122.378955, radius: 100, createdAt: new Date() }
+      { id: 'job_site_1', name: 'Golden Gate Retrofit', address: 'Presidio, San Francisco, CA', latitude: 37.819929, longitude: -122.478255, radius: 1609, createdAt: new Date() },
+      { id: 'job_site_2', name: 'Downtown Highrise Site', address: '101 California St, San Francisco, CA', latitude: 37.793230, longitude: -122.399580, radius: 1609, createdAt: new Date() },
+      { id: 'job_site_3', name: 'SFO Airport Hangar Base', address: 'SFO Airport, San Francisco, CA', latitude: 37.621313, longitude: -122.378955, radius: 1609, createdAt: new Date() }
     ];
 
     const unsubscribeJobs = onSnapshot(collection(db, 'jobs'), (snapshot) => {
@@ -159,6 +162,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       if (generalSetCard) {
         const hour = parseInt(generalSetCard.data().autoClockOutTime?.split(':')[0] || '18', 10);
         setAutoLogoutHour(hour);
+        setCompanyTravelCoverageMinutes(generalSetCard.data().companyTravelCoverageMinutes ?? 30);
       }
     }, (error) => {
       console.warn("Lacking general settings read accesses, keeping default 18:00 (6:00 PM) logout.");
@@ -182,6 +186,33 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   }, [jobs]);
 
   const activeJob = jobs.find(j => j.id === selectedJobId) || jobs[0];
+
+  // Auto-calculate travel time to site when job selection or home address changes
+  useEffect(() => {
+    const job = jobs.find(j => j.id === selectedJobId) || jobs[0];
+    if (!job || !user.homeLatitude || !user.homeLongitude) {
+      setTravelIn(0);
+      return;
+    }
+    const distMeters = getHaversineDistance(user.homeLatitude, user.homeLongitude, job.latitude, job.longitude);
+    const distKm = distMeters / 1000;
+    const rawMinutes = (distKm / 40) * 60 + 5;
+    setTravelIn(Math.round(rawMinutes / 5) * 5);
+  }, [selectedJobId, jobs, user.homeLatitude, user.homeLongitude]);
+
+  // Auto-calculate travel time back when active session job is known
+  useEffect(() => {
+    if (!activeEntry) return;
+    const job = jobs.find(j => j.id === activeEntry.jobId);
+    if (!job || !user.homeLatitude || !user.homeLongitude) {
+      setTravelOut(0);
+      return;
+    }
+    const distMeters = getHaversineDistance(user.homeLatitude, user.homeLongitude, job.latitude, job.longitude);
+    const distKm = distMeters / 1000;
+    const rawMinutes = (distKm / 40) * 60 + 5;
+    setTravelOut(Math.round(rawMinutes / 5) * 5);
+  }, [activeEntry?.jobId, jobs, user.homeLatitude, user.homeLongitude]);
 
   // Live Subscription of worker logs
   useEffect(() => {
@@ -449,22 +480,20 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   const handleClockOutWithPTO = async () => {
     if (!activeEntry || !ptoTopUpNote.trim() || ptoTopUpHours <= 0) return;
 
-    // Step 1: Clock out normally (best-effort GPS)
-    let outLat = userLat;
-    let outLng = userLng;
+    // Step 1: Clock out normally (best-effort GPS — null if unavailable)
+    let clockOutCoordsPTO: { latitude: number; longitude: number } | null = null;
     try {
       const coords = await fetchGPS();
-      outLat = coords.lat;
-      outLng = coords.lng;
-      setUserLat(outLat);
-      setUserLng(outLng);
+      clockOutCoordsPTO = { latitude: coords.lat, longitude: coords.lng };
+      setUserLat(coords.lat);
+      setUserLng(coords.lng);
     } catch { /* non-blocking */ }
 
     const clockOutNow = new Date();
     const clockOutPayload = {
       ...activeEntry,
       clockOutTime: clockOutNow,
-      clockOutCoords: { latitude: outLat, longitude: outLng },
+      clockOutCoords: clockOutCoordsPTO,
       status: 'completed' as const,
       travelTimeOut: Number(travelOut) || 0,
       updatedAt: clockOutNow,
@@ -514,7 +543,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     }
   };
 
-  // Clock In Action Handler
+  // Clock In Action Handler — GPS is captured but never blocks clock-in
   const handleClockIn = async () => {
     if (!selectedJobId || !selectedCostCode || !description.trim()) {
       alert('Daily time entry requires: Job Selection, Cost Code, and a description of work.');
@@ -524,29 +553,16 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     setGpsError(null);
     setGpsLoading(true);
 
-    let lat = userLat;
-    let lng = userLng;
+    let clockInCoords: { latitude: number; longitude: number } | null = null;
 
     try {
       const coords = await fetchGPS();
-      lat = coords.lat;
-      lng = coords.lng;
-      setUserLat(lat);
-      setUserLng(lng);
-    } catch (errMsg) {
-      setGpsLoading(false);
-      setGpsError(errMsg as string);
-      return;
-    }
-
-    // Proximity check
-    const distanceMeters = getHaversineDistance(activeJob.latitude, activeJob.longitude, lat, lng);
-    if (distanceMeters > activeJob.radius) {
-      setGpsLoading(false);
-      setGpsError(
-        `You are ${distanceMeters.toFixed(0)}m from ${activeJob.name}. You must be within ${activeJob.radius}m to clock in.`
-      );
-      return;
+      clockInCoords = { latitude: coords.lat, longitude: coords.lng };
+      setUserLat(coords.lat);
+      setUserLng(coords.lng);
+    } catch {
+      // GPS unavailable — proceed without location, note it for admin visibility
+      setGpsError('No GPS signal detected. Clocked in without location — your manager will see this on the timecard.');
     }
 
     setGpsLoading(false);
@@ -561,7 +577,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       description: description,
       status: 'active',
       clockInTime: new Date(),
-      clockInCoords: { latitude: lat, longitude: lng },
+      clockInCoords,
       clockOutTime: null,
       clockOutCoords: null,
       travelTimeIn: Number(travelIn) || 0,
@@ -582,7 +598,6 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       try {
         await addDoc(collection(db, 'time_entries'), payload);
         setDescription('');
-        setTravelIn(0);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, 'time_entries');
       }
@@ -598,23 +613,21 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   const handleClockOut = async () => {
     if (!activeEntry) return;
 
-    // Best-effort GPS update on clock-out; don't block if unavailable
-    let outLat = userLat;
-    let outLng = userLng;
+    // Best-effort GPS — store null if unavailable, never block
+    let clockOutCoords: { latitude: number; longitude: number } | null = null;
     try {
       const coords = await fetchGPS();
-      outLat = coords.lat;
-      outLng = coords.lng;
-      setUserLat(outLat);
-      setUserLng(outLng);
+      clockOutCoords = { latitude: coords.lat, longitude: coords.lng };
+      setUserLat(coords.lat);
+      setUserLng(coords.lng);
     } catch {
-      // Non-blocking — use last known coords
+      // Non-blocking — null coords stored
     }
 
     const payload = {
       ...activeEntry,
       clockOutTime: new Date(),
-      clockOutCoords: { latitude: outLat, longitude: outLng },
+      clockOutCoords,
       status: 'completed' as const,
       travelTimeOut: Number(travelOut) || 0,
       updatedAt: new Date()
@@ -1031,27 +1044,37 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                     )}
                   </div>
 
-                  {/* Travel & Notes End Panel */}
-                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-600">
+                  {/* Travel Back (Exit) — Auto-calculated read-only */}
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-700">
                       <Navigation className="w-4 h-4 text-blue-500" />
-                      Travel Back (Exit)
+                      Travel Back (Auto-calculated)
                     </div>
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">
-                        Log travel minutes back from Job Site:
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={travelOut}
-                        onChange={(e) => setTravelOut(Math.max(0, parseInt(e.target.value) || 0))}
-                        className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-mono text-gray-900 focus:outline-none focus:border-blue-500"
-                        id="travel-out-input"
-                      />
-                    </div>
+                    {!user.homeLatitude || !user.homeLongitude ? (
+                      <p className="text-[11px] text-amber-600 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        Home address not set — contact admin.
+                      </p>
+                    ) : (
+                      <div className="space-y-1 text-xs font-mono">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Estimated travel back:</span>
+                          <span className="font-bold text-blue-700">{travelOut} min</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Company covers:</span>
+                          <span className="font-bold text-green-600">{Math.min(travelOut, companyTravelCoverageMinutes)} min</span>
+                        </div>
+                        {travelOut > companyTravelCoverageMinutes && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-600">On your account:</span>
+                            <span className="font-bold text-amber-600">{travelOut - companyTravelCoverageMinutes} min</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <p className="text-[10px] text-gray-400 italic">
-                      Separately reported to project manager and paid outside regular hours.
+                      Paid outside regular hours. Based on your home address on file.
                     </p>
                   </div>
                 </div>
@@ -1177,14 +1200,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                             />
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-1">Travel Out (min)</label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={travelOut}
-                              onChange={e => setTravelOut(Math.max(0, parseInt(e.target.value) || 0))}
-                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-gray-900 focus:outline-none"
-                            />
+                            <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-1">Travel Back (min)</label>
+                            <div className="w-full bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm font-mono text-blue-700 font-bold">
+                              {travelOut} min
+                            </div>
                           </div>
                         </div>
 
@@ -1373,23 +1392,35 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   </div>
                 </div>
 
-                {/* Travel Time Input */}
-                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                  <span className="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-1.5">
-                    3. Travel Time To Site (Separate payment)
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs text-gray-500 w-44 shrink-0">Log minutes spent traveling to work site:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={travelIn}
-                      onChange={(e) => setTravelIn(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono text-gray-900 focus:outline-none focus:border-blue-500"
-                      placeholder="0 minutes"
-                      id="travel-in-input"
-                    />
+                {/* Travel Time — Auto-calculated read-only */}
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                  <div className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Navigation className="w-3.5 h-3.5" />
+                    3. Estimated Travel Time (Auto-calculated)
                   </div>
+                  {!user.homeLatitude || !user.homeLongitude ? (
+                    <p className="text-xs text-amber-600 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      Home address not set. Contact your administrator to enable auto travel time.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 text-xs font-mono">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Estimated to site:</span>
+                        <span className="font-bold text-blue-700">{travelIn} min</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Company covers:</span>
+                        <span className="font-bold text-green-600">{Math.min(travelIn, companyTravelCoverageMinutes)} min</span>
+                      </div>
+                      {travelIn > companyTravelCoverageMinutes && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">On your account:</span>
+                          <span className="font-bold text-amber-600">{travelIn - companyTravelCoverageMinutes} min</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Description Input */}
@@ -1425,7 +1456,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   {gpsLoading ? (
                     <>
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Verifying Location...
+                      Getting Location...
                     </>
                   ) : (
                     <>
@@ -1435,10 +1466,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   )}
                 </button>
 
-                {/* Inline GPS error — shown below button */}
+                {/* GPS status note — amber info only, never blocks */}
                 {gpsError && (
-                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700">
-                    <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{gpsError}</span>
                   </div>
                 )}
