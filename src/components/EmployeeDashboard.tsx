@@ -88,11 +88,12 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   const [manualClockOutTime, setManualClockOutTime] = useState('');
   const [manualClockOutNote, setManualClockOutNote] = useState('');
 
-  // Full-day PTO / day-off form (before clocking in)
-  const [showPTODayForm, setShowPTODayForm] = useState(false);
-  const [ptoDayType, setPtoDayType] = useState<'pto' | 'unpaid'>('pto');
-  const [ptoDayNote, setPtoDayNote] = useState('');
-  const [ptoDayHours, setPtoDayHours] = useState(8);
+  // Step 3: time-off claim (both PTO and unpaid can be selected simultaneously)
+  const [ptoEnabled, setPtoEnabled] = useState(false);
+  const [ptoClaimHours, setPtoClaimHours] = useState(8);
+  const [unpaidEnabled, setUnpaidEnabled] = useState(false);
+  const [unpaidClaimHours, setUnpaidClaimHours] = useState(8);
+  const [timeOffNote, setTimeOffNote] = useState('');
 
   // Partial-day PTO top-up (clock out early + claim remaining hours)
   const [showPTOTopUp, setShowPTOTopUp] = useState(false);
@@ -512,48 +513,57 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     }
   };
 
-  // Full-day PTO / day off — submitted directly without clocking in
+  // Step 3: submit time-off claim — can create PTO entry, unpaid entry, or both
   const handleSubmitPTODay = async () => {
-    if (!ptoDayNote.trim()) return;
+    if (!timeOffNote.trim()) return;
+    if (!ptoEnabled && !unpaidEnabled) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const clockIn = new Date(`${todayStr}T08:00:00`);
-    const clockOutHour = Math.min(8 + Math.floor(ptoDayHours), 20);
-    const clockOut = new Date(`${todayStr}T${String(clockOutHour).padStart(2, '0')}:00:00`);
 
-    const isPTO = ptoDayType === 'pto';
-    const payload = {
-      userId: user.uid,
-      employeeName: user.name,
-      date: todayStr,
-      jobId: isPTO ? 'time_off_pto' : 'time_off_unpaid',
-      jobName: isPTO ? 'Paid Time Off' : 'Unpaid Time Off',
-      costCode: isPTO ? 'PTO - Paid Time Off' : 'UPT - Unpaid Time Off',
-      description: `${isPTO ? 'PTO' : 'Unpaid Time Off'}: ${ptoDayNote.trim()}`,
-      status: 'pending_approval',
-      clockInTime: clockIn,
-      clockInCoords: null,
-      clockOutTime: clockOut,
-      clockOutCoords: null,
-      travelTimeIn: 0,
-      travelTimeOut: 0,
-      lunchStart: null,
-      lunchStartCoords: null,
-      lunchEnd: null,
-      lunchEndCoords: null,
-      lunchDuration: 0,
-      isManualEdit: true,
-      isApproved: false,
-      editRequestedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    const makeEntry = (isPTO: boolean, hours: number) => {
+      const clockIn = new Date(`${todayStr}T08:00:00`);
+      const clockOutHour = Math.min(8 + Math.floor(hours), 20);
+      const clockOut = new Date(`${todayStr}T${String(clockOutHour).padStart(2, '0')}:00:00`);
+      return {
+        userId: user.uid,
+        employeeName: user.name,
+        date: todayStr,
+        jobId: isPTO ? 'time_off_pto' : 'time_off_unpaid',
+        jobName: isPTO ? 'Paid Time Off' : 'Unpaid Time Off',
+        costCode: isPTO ? 'PTO - Paid Time Off' : 'UPT - Unpaid Time Off',
+        description: `${isPTO ? 'PTO' : 'Unpaid Time Off'}: ${timeOffNote.trim()}`,
+        status: 'pending_approval',
+        clockInTime: clockIn,
+        clockInCoords: null,
+        clockOutTime: clockOut,
+        clockOutCoords: null,
+        travelTimeIn: 0,
+        travelTimeOut: 0,
+        lunchStart: null,
+        lunchStartCoords: null,
+        lunchEnd: null,
+        lunchEndCoords: null,
+        lunchDuration: 0,
+        isManualEdit: true,
+        isApproved: false,
+        editRequestedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
     };
 
     try {
-      await addDoc(collection(db, 'time_entries'), payload);
-      setShowPTODayForm(false);
-      setPtoDayNote('');
-      setPtoDayHours(8);
+      if (ptoEnabled && ptoClaimHours > 0) {
+        await addDoc(collection(db, 'time_entries'), makeEntry(true, ptoClaimHours));
+      }
+      if (unpaidEnabled && unpaidClaimHours > 0) {
+        await addDoc(collection(db, 'time_entries'), makeEntry(false, unpaidClaimHours));
+      }
+      setPtoEnabled(false);
+      setUnpaidEnabled(false);
+      setTimeOffNote('');
+      setPtoClaimHours(8);
+      setUnpaidClaimHours(8);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'time_entries');
     }
@@ -1414,147 +1424,37 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
               /* Clock In flow */
               <div className="space-y-4">
 
-                {/* Full-day PTO / Day Off toggle */}
-                {!showPTODayForm ? (
-                  <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <Plane className="w-4 h-4 text-slate-400" />
-                      <span className="font-semibold">Not coming in today?</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setPtoDayType('pto'); setShowPTODayForm(true); }}
-                        className="text-[11px] font-bold bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg cursor-pointer active:translate-y-px transition-all"
-                      >
-                        Use PTO
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setPtoDayType('unpaid'); setShowPTODayForm(true); }}
-                        className="text-[11px] font-bold bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg cursor-pointer active:translate-y-px transition-all"
-                      >
-                        Unpaid Day
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={`border-2 rounded-2xl p-4 space-y-3 ${ptoDayType === 'pto' ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Plane className={`w-4 h-4 ${ptoDayType === 'pto' ? 'text-green-600' : 'text-gray-500'}`} />
-                        <span className={`text-sm font-black uppercase tracking-wide ${ptoDayType === 'pto' ? 'text-green-700' : 'text-gray-700'}`}>
-                          {ptoDayType === 'pto' ? 'Using Paid Time Off Today' : 'Taking Unpaid Day Off'}
-                        </span>
-                      </div>
-                      {/* Toggle between PTO/Unpaid */}
-                      <div className="flex gap-1.5">
-                        <button type="button" onClick={() => setPtoDayType('pto')}
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer transition-all ${ptoDayType === 'pto' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-500 border-gray-300'}`}>
-                          PTO
-                        </button>
-                        <button type="button" onClick={() => setPtoDayType('unpaid')}
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer transition-all ${ptoDayType === 'unpaid' ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-500 border-gray-300'}`}>
-                          Unpaid
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-1">Hours</label>
-                        <input
-                          type="number"
-                          min="1" max="12" step="0.5"
-                          value={ptoDayHours}
-                          onChange={e => setPtoDayHours(Number(e.target.value) || 8)}
-                          className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-gray-900 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-1">Date</label>
-                        <input
-                          type="text"
-                          readOnly
-                          value={new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                          className="w-full bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-500 font-mono"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-1">
-                        Reason / Note <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={ptoDayNote}
-                        onChange={e => setPtoDayNote(e.target.value)}
-                        placeholder="e.g. Doctor appointment, sick day, personal travel..."
-                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-green-400"
-                      />
-                    </div>
-
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleSubmitPTODay}
-                        disabled={!ptoDayNote.trim()}
-                        className={`flex-1 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all shadow-sm ${ptoDayType === 'pto' ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
-                      >
-                        <Plane className="w-4 h-4" />
-                        Submit {ptoDayType === 'pto' ? 'PTO Day' : 'Unpaid Day Off'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setShowPTODayForm(false); setPtoDayNote(''); }}
-                        className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-600 text-sm font-bold hover:bg-gray-50 cursor-pointer transition-all"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Divider between PTO toggle and clock-in form */}
-                {!showPTODayForm && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 border-t border-gray-200" />
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Or clock in for work</span>
-                    <div className="flex-1 border-t border-gray-200" />
-                  </div>
-                )}
-
-                {!showPTODayForm && jobsLoadError && (
+                {/* 1. Select Job Site */}
+                {jobsLoadError && (
                   <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{jobsLoadError}</span>
                   </div>
                 )}
 
-              {!showPTODayForm && (<><div>
-                    <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
-                      1. Select Job Site
-                    </label>
-                    <select
-                      value={selectedJobId}
-                      onChange={(e) => setSelectedJobId(e.target.value)}
-                      className="block w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                      id="job-select"
-                    >
-                      {jobs.map((job) => (
-                        <option key={job.id} value={job.id}>
-                          {job.name} ({job.address})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
+                    1. Select Job Site
+                  </label>
+                  <select
+                    value={selectedJobId}
+                    onChange={(e) => setSelectedJobId(e.target.value)}
+                    className="block w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    id="job-select"
+                  >
+                    {jobs.map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.name} ({job.address})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                {/* Travel Time — Auto-calculated read-only */}
+                {/* 2. Estimated Travel Time */}
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
                   <div className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                     <Navigation className="w-3.5 h-3.5" />
-                    3. Estimated Travel Time (Auto-calculated)
+                    2. Estimated Travel Time (Auto-calculated)
                   </div>
                   {!user.homeLatitude || !user.homeLongitude ? (
                     <p className="text-xs text-amber-600 flex items-center gap-1.5">
@@ -1577,6 +1477,91 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                           <span className="font-bold text-amber-600">{travelIn - companyTravelCoverageMinutes} min</span>
                         </div>
                       )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Claim Time Off (Optional) */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                  <div className="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <Plane className="w-3.5 h-3.5 text-slate-400" />
+                    3. Not Coming In? Claim Time Off
+                  </div>
+
+                  <div className="space-y-2">
+                    {/* PTO row */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPtoEnabled(v => !v)}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer w-28 justify-center shrink-0 ${
+                          ptoEnabled
+                            ? 'bg-green-600 text-white border-green-600'
+                            : 'bg-white text-gray-500 border-gray-300 hover:border-green-400'
+                        }`}
+                      >
+                        <Plane className="w-3 h-3" />
+                        Paid (PTO)
+                      </button>
+                      <input
+                        type="number"
+                        min="0.5" max="12" step="0.5"
+                        value={ptoClaimHours}
+                        onChange={e => setPtoClaimHours(Number(e.target.value) || 1)}
+                        disabled={!ptoEnabled}
+                        className="w-20 bg-white border border-gray-300 rounded-lg px-2 py-2 text-sm font-mono text-center text-gray-900 focus:outline-none focus:border-green-400 disabled:opacity-40 disabled:bg-gray-100"
+                      />
+                      <span className="text-xs text-gray-500">hrs</span>
+                    </div>
+
+                    {/* Unpaid row */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setUnpaidEnabled(v => !v)}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer w-28 justify-center shrink-0 ${
+                          unpaidEnabled
+                            ? 'bg-gray-600 text-white border-gray-600'
+                            : 'bg-white text-gray-500 border-gray-300 hover:border-gray-500'
+                        }`}
+                      >
+                        Unpaid
+                      </button>
+                      <input
+                        type="number"
+                        min="0.5" max="12" step="0.5"
+                        value={unpaidClaimHours}
+                        onChange={e => setUnpaidClaimHours(Number(e.target.value) || 1)}
+                        disabled={!unpaidEnabled}
+                        className="w-20 bg-white border border-gray-300 rounded-lg px-2 py-2 text-sm font-mono text-center text-gray-900 focus:outline-none focus:border-gray-400 disabled:opacity-40 disabled:bg-gray-100"
+                      />
+                      <span className="text-xs text-gray-500">hrs</span>
+                    </div>
+                  </div>
+
+                  {(ptoEnabled || unpaidEnabled) && (
+                    <div className="space-y-2 pt-2 border-t border-gray-200">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-1">
+                          Reason <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={timeOffNote}
+                          onChange={e => setTimeOffNote(e.target.value)}
+                          placeholder="e.g. Doctor appointment, sick day, personal travel..."
+                          className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSubmitPTODay}
+                        disabled={!timeOffNote.trim()}
+                        className="w-full disabled:opacity-50 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all"
+                      >
+                        <Plane className="w-3.5 h-3.5" />
+                        Submit {[ptoEnabled && `${ptoClaimHours}h PTO`, unpaidEnabled && `${unpaidClaimHours}h Unpaid`].filter(Boolean).join(' + ')}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1609,7 +1594,6 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                     <span>{gpsError}</span>
                   </div>
                 )}
-              </>)}
               </div>
             )}
           </div>
@@ -1801,7 +1785,6 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
 
                       <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-mono border-t border-gray-200 pt-1.5 text-gray-500">
                         <span>Worked: <strong className="text-blue-600">{data.worked}h</strong></span>
-                        <span>Billable: <strong className="text-green-600">{data.billable}h</strong></span>
                         {item.lunchDuration > 0 && <span>Lunch: {item.lunchDuration}m</span>}
                       </div>
 

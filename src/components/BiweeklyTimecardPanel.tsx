@@ -110,11 +110,12 @@ function getEntryTotals(entry: TimeEntry) {
   const lunch = entry.lunchDuration || 0;
   const workMins = Math.max(0, diffMins - lunch);
   const travelMins = (entry.travelTimeIn || 0) + (entry.travelTimeOut || 0);
-  return {
-    worked: workMins / 60,
-    travel: travelMins,
-    lunch,
-  };
+  const totalHours = workMins / 60;
+  const toff = entry.jobId === 'time_off_pto' || entry.jobId === 'time_off_unpaid';
+  // Daily OT: work entries >8h/day; time-off entries never generate OT
+  const worked = toff ? totalHours : Math.min(totalHours, 8);
+  const ot     = toff ? 0 : Math.max(0, totalHours - 8);
+  return { worked, ot, travel: travelMins, lunch };
 }
 
 function isTimeOffEntry(entry: TimeEntry) {
@@ -241,18 +242,19 @@ export default function BiweeklyTimecardPanel({
       const t = getEntryTotals(e);
       const toff = isTimeOffEntry(e);
       return {
-        worked: acc.worked + (toff ? 0 : t.worked),
-        travel: acc.travel + (toff ? 0 : t.travel),
-        pto: acc.pto + (e.jobId === 'time_off_pto' ? t.worked : 0),
-        unpaid: acc.unpaid + (e.jobId === 'time_off_unpaid' ? t.worked : 0),
+        worked:  acc.worked  + (toff ? 0 : t.worked),
+        ot:      acc.ot      + (toff ? 0 : t.ot),
+        travel:  acc.travel  + (toff ? 0 : t.travel),
+        pto:     acc.pto     + (e.jobId === 'time_off_pto'    ? t.worked : 0),
+        unpaid:  acc.unpaid  + (e.jobId === 'time_off_unpaid' ? t.worked : 0),
       };
     },
-    { worked: 0, travel: 0, pto: 0, unpaid: 0 },
+    { worked: 0, ot: 0, travel: 0, pto: 0, unpaid: 0 },
   );
 
-  const grandTotal = totals.worked + (totals.travel / 60) + totals.pto;
-
   const holidaysInPeriod = getHolidaysInPeriod(period.start, period.end);
+  const holidayHours = holidaysInPeriod.length * 8;
+  const grandTotal = totals.worked + totals.ot + (totals.travel / 60) + totals.pto;
 
   type TableRow = { type: 'entry'; entry: typeof periodEntries[0] } | { type: 'holiday'; date: string; name: string };
   const tableRows: TableRow[] = [
@@ -560,35 +562,76 @@ export default function BiweeklyTimecardPanel({
         </div>
       </div>
 
-      {/* Summary stat bar — always 5 cards in order: Regular, Travel, PTO, Non-paid, Total */}
-      {periodEntries.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="bg-white border border-gray-200 rounded-xl p-3.5 text-center shadow-sm">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Regular</div>
-            <div className="text-2xl font-black text-blue-600 font-mono">{totals.worked.toFixed(2)}</div>
-            <div className="text-[9px] text-gray-400 font-medium mt-0.5">hrs</div>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-3.5 text-center shadow-sm">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Travel</div>
-            <div className="text-2xl font-black text-gray-700 font-mono">{totals.travel}</div>
-            <div className="text-[9px] text-gray-400 font-medium mt-0.5">mins</div>
-          </div>
-          <div className={`rounded-xl p-3.5 text-center shadow-sm border ${totals.pto > 0 ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
-            <div className={`text-[10px] uppercase font-bold tracking-wider mb-1 flex items-center justify-center gap-1 ${totals.pto > 0 ? 'text-green-500' : 'text-gray-400'}`}>
-              <Plane className="w-3 h-3" />PTO
+      {/* Payroll summary row — admin mode (Name | Regular | OT | Holiday | PTO | Unpaid) */}
+      {mode === 'admin' && targetName !== '—' && periodEntries.length > 0 && (
+        <div className="bg-slate-800 rounded-2xl px-5 py-4 shadow-sm">
+          <div className="text-[9px] uppercase font-bold tracking-widest text-slate-400 mb-3">Payroll Summary — {fmtDate(period.start)} – {fmtDate(period.end)}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
+            <div>
+              <div className="text-[9px] uppercase text-slate-400 font-bold tracking-wide mb-0.5">Employee</div>
+              <div className="text-sm font-black text-white truncate">{targetName}</div>
             </div>
-            <div className={`text-2xl font-black font-mono ${totals.pto > 0 ? 'text-green-600' : 'text-gray-300'}`}>{totals.pto.toFixed(2)}</div>
-            <div className="text-[9px] text-gray-400 font-medium mt-0.5">hrs</div>
+            <div>
+              <div className="text-[9px] uppercase text-blue-400 font-bold tracking-wide mb-0.5">Regular</div>
+              <div className="text-xl font-black text-blue-300 font-mono">{totals.worked.toFixed(2)}<span className="text-xs ml-0.5">h</span></div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-orange-400 font-bold tracking-wide mb-0.5">Overtime</div>
+              <div className={`text-xl font-black font-mono ${totals.ot > 0 ? 'text-orange-300' : 'text-slate-600'}`}>{totals.ot.toFixed(2)}<span className="text-xs ml-0.5">h</span></div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-amber-400 font-bold tracking-wide mb-0.5">Holiday</div>
+              <div className={`text-xl font-black font-mono ${holidayHours > 0 ? 'text-amber-300' : 'text-slate-600'}`}>{holidayHours.toFixed(2)}<span className="text-xs ml-0.5">h</span></div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-green-400 font-bold tracking-wide mb-0.5">PTO</div>
+              <div className={`text-xl font-black font-mono ${totals.pto > 0 ? 'text-green-300' : 'text-slate-600'}`}>{totals.pto.toFixed(2)}<span className="text-xs ml-0.5">h</span></div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-slate-400 font-bold tracking-wide mb-0.5">Unpaid</div>
+              <div className={`text-xl font-black font-mono ${totals.unpaid > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{totals.unpaid.toFixed(2)}<span className="text-xs ml-0.5">h</span></div>
+            </div>
           </div>
-          <div className={`rounded-xl p-3.5 text-center shadow-sm border ${totals.unpaid > 0 ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'}`}>
-            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Non-paid</div>
-            <div className={`text-2xl font-black font-mono ${totals.unpaid > 0 ? 'text-gray-600' : 'text-gray-300'}`}>{totals.unpaid.toFixed(2)}</div>
-            <div className="text-[9px] text-gray-400 font-medium mt-0.5">hrs</div>
+          <div className="mt-3 pt-3 border-t border-slate-700 text-[10px] text-slate-500 font-mono">
+            Reg + OT = {(totals.worked + totals.ot).toFixed(2)}h &nbsp;|&nbsp; Travel = {totals.travel}m ({(totals.travel/60).toFixed(2)}h) &nbsp;|&nbsp; On-site = {Math.max(0, totals.worked + totals.ot - totals.travel/60).toFixed(2)}h
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-center shadow-sm">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-blue-500 mb-1">Total</div>
-            <div className="text-2xl font-black text-blue-700 font-mono">{grandTotal.toFixed(2)}</div>
-            <div className="text-[9px] text-blue-400 font-medium mt-0.5">hrs</div>
+        </div>
+      )}
+
+      {/* Summary stat bar — Regular, OT, Travel, PTO, Non-paid, Total */}
+      {periodEntries.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+            <div className="text-[9px] uppercase font-bold tracking-wider text-gray-400 mb-1">Regular</div>
+            <div className="text-xl font-black text-blue-600 font-mono">{totals.worked.toFixed(2)}</div>
+            <div className="text-[9px] text-gray-400 mt-0.5">hrs</div>
+          </div>
+          <div className={`rounded-xl p-3 text-center shadow-sm border ${totals.ot > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'}`}>
+            <div className={`text-[9px] uppercase font-bold tracking-wider mb-1 ${totals.ot > 0 ? 'text-orange-500' : 'text-gray-400'}`}>OT</div>
+            <div className={`text-xl font-black font-mono ${totals.ot > 0 ? 'text-orange-600' : 'text-gray-300'}`}>{totals.ot.toFixed(2)}</div>
+            <div className="text-[9px] text-gray-400 mt-0.5">hrs</div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+            <div className="text-[9px] uppercase font-bold tracking-wider text-gray-400 mb-1">Travel</div>
+            <div className="text-xl font-black text-gray-700 font-mono">{totals.travel}</div>
+            <div className="text-[9px] text-gray-400 mt-0.5">mins</div>
+          </div>
+          <div className={`rounded-xl p-3 text-center shadow-sm border ${totals.pto > 0 ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
+            <div className={`text-[9px] uppercase font-bold tracking-wider mb-1 flex items-center justify-center gap-0.5 ${totals.pto > 0 ? 'text-green-500' : 'text-gray-400'}`}>
+              <Plane className="w-2.5 h-2.5" />PTO
+            </div>
+            <div className={`text-xl font-black font-mono ${totals.pto > 0 ? 'text-green-600' : 'text-gray-300'}`}>{totals.pto.toFixed(2)}</div>
+            <div className="text-[9px] text-gray-400 mt-0.5">hrs</div>
+          </div>
+          <div className={`rounded-xl p-3 text-center shadow-sm border ${totals.unpaid > 0 ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'}`}>
+            <div className="text-[9px] uppercase font-bold tracking-wider text-gray-400 mb-1">Unpaid</div>
+            <div className={`text-xl font-black font-mono ${totals.unpaid > 0 ? 'text-gray-600' : 'text-gray-300'}`}>{totals.unpaid.toFixed(2)}</div>
+            <div className="text-[9px] text-gray-400 mt-0.5">hrs</div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center shadow-sm">
+            <div className="text-[9px] uppercase font-bold tracking-wider text-blue-500 mb-1">Total</div>
+            <div className="text-xl font-black text-blue-700 font-mono">{grandTotal.toFixed(2)}</div>
+            <div className="text-[9px] text-blue-400 mt-0.5">hrs</div>
           </div>
         </div>
       )}
@@ -616,6 +659,7 @@ export default function BiweeklyTimecardPanel({
                 <th className="px-4 py-3 text-center">In</th>
                 <th className="px-4 py-3 text-center">Out</th>
                 <th className="px-4 py-3 text-right">Regular</th>
+                <th className="px-4 py-3 text-right">OT</th>
                 <th className="px-4 py-3 text-right">Travel</th>
                 <th className="px-4 py-3 text-right">PTO</th>
                 <th className="px-4 py-3 text-right">Non-paid</th>
@@ -626,7 +670,7 @@ export default function BiweeklyTimecardPanel({
             <tbody className="divide-y divide-gray-100 bg-white">
               {tableRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-gray-400 italic">
+                  <td colSpan={12} className="px-4 py-10 text-center text-gray-400 italic">
                     No completed entries recorded for this pay period.
                   </td>
                 </tr>
@@ -645,6 +689,7 @@ export default function BiweeklyTimecardPanel({
                             {row.name}
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
@@ -695,6 +740,14 @@ export default function BiweeklyTimecardPanel({
                           <span className="text-gray-300">—</span>
                         ) : (
                           <span className="text-blue-600">{t.worked.toFixed(2)}h</span>
+                        )}
+                      </td>
+                      {/* OT */}
+                      <td className="px-4 py-3 text-right font-mono font-bold whitespace-nowrap">
+                        {toff || t.ot === 0 ? (
+                          <span className="text-gray-300">—</span>
+                        ) : (
+                          <span className="text-orange-600">{t.ot.toFixed(2)}h</span>
                         )}
                       </td>
                       {/* Travel */}
@@ -767,6 +820,9 @@ export default function BiweeklyTimecardPanel({
                   </td>
                   <td className="px-4 py-3 text-right font-black text-blue-700 font-mono whitespace-nowrap">
                     {totals.worked.toFixed(2)}h
+                  </td>
+                  <td className={`px-4 py-3 text-right font-black font-mono whitespace-nowrap ${totals.ot > 0 ? 'text-orange-600' : 'text-gray-300'}`}>
+                    {totals.ot > 0 ? `${totals.ot.toFixed(2)}h` : '—'}
                   </td>
                   <td className="px-4 py-3 text-right font-black text-gray-600 font-mono whitespace-nowrap">
                     {totals.travel > 0 ? `${totals.travel}m` : '—'}
