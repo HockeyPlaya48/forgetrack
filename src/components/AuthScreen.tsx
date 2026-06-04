@@ -68,6 +68,10 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
       } else {
         // Sign In Flow
         const userCred = await signInWithEmailAndPassword(auth, email, password);
+        // Bootstrap admin: patch Firestore role to 'admin' if it was ever mis-written as 'employee'
+        if (email.toLowerCase().trim() === 'kenneytyler14@gmail.com') {
+          await setDoc(doc(db, 'users', userCred.user.uid), { role: 'admin' }, { merge: true });
+        }
         onSuccess(userCred.user.uid);
       }
     } catch (err: any) {
@@ -106,7 +110,8 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         uid: user.uid,
         name: user.displayName || pending?.name || 'Google Employee',
         email: userEmail,
-        role: pending?.role ?? assignedRole,
+        // Bootstrapped admin always wins regardless of pending doc
+        role: userEmail === 'kenneytyler14@gmail.com' ? 'admin' : (pending?.role ?? assignedRole),
         ...(pending?.jobTitle      && { jobTitle: pending.jobTitle }),
         ...(pending?.billableRate  && { billableRate: pending.billableRate }),
         ...(pending?.phoneNumber   && { phoneNumber: pending.phoneNumber }),
