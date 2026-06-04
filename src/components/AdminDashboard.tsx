@@ -695,8 +695,8 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       {/* Main Core Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-        {/* Left Sidebar: Admin Tools */}
-        <div className="space-y-6 lg:col-span-1">
+        {/* Right Sidebar: Admin Tools */}
+        <div className="space-y-6 lg:col-span-1 lg:order-2">
 
           {/* Settings Section */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="settings-card">
@@ -959,8 +959,8 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
           </div>
         </div>
 
-        {/* Right Reporting Area */}
-        <div className="space-y-6 lg:col-span-3">
+        {/* Main Reporting Area */}
+        <div className="space-y-6 lg:col-span-3 lg:order-1">
 
           {/* Time Off Requests — pending review */}
           {timeOffRequests.some(r => r.status === 'pending') && (
@@ -1100,7 +1100,6 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                           <div>Cost: <span className="text-gray-700">{item.costCode.split(' ')[0]}</span></div>
                           <div>Clock-in: <span className="text-gray-700">{item.clockInTime?.seconds ? new Date(item.clockInTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span></div>
                           <div>Regular: <span className="text-blue-600 font-extrabold">{data.worked.toFixed(2)} hrs</span></div>
-                          <div>Billable: <span className="text-green-600 font-extrabold">{data.billable.toFixed(2)} hrs</span></div>
                           {(item.travelTimeIn + item.travelTimeOut) > 0 && (
                             <div>Travel: <span className="text-gray-500">{item.travelTimeIn + item.travelTimeOut}m</span></div>
                           )}
