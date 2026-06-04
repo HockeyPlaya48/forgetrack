@@ -52,6 +52,27 @@ interface AdminDashboardProps {
   user: UserProfile;
 }
 
+// ── Pay period helpers (shared EPOCH with BiweeklyTimecardPanel) ──────────────
+const PAY_EPOCH = new Date('2024-01-01T00:00:00');
+function buildPayPeriods(count = 12) {
+  const today = new Date();
+  const diffDays = Math.floor((today.getTime() - PAY_EPOCH.getTime()) / 86400000);
+  const currentIdx = Math.floor(diffDays / 14);
+  return Array.from({ length: count }, (_, i) => {
+    const idx = currentIdx - i;
+    const start = new Date(PAY_EPOCH);
+    start.setDate(PAY_EPOCH.getDate() + idx * 14);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 13);
+    const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return {
+      label: `${fmt(start)} – ${fmt(end)}${i === 0 ? ' (Current)' : ''}`,
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0],
+    };
+  });
+}
+
 export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps) {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [jobs, setJobs] = useState<JobSite[]>([]);
@@ -72,6 +93,13 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [filterJob, setFilterJob] = useState('');
   const [filterCostCode, setFilterCostCode] = useState('');
   const [filterDate, setFilterDate] = useState('');
+
+  // Date filter mode
+  const [filterDateMode, setFilterDateMode] = useState<'single' | 'period' | 'range'>('single');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterPeriodIdx, setFilterPeriodIdx] = useState(0);
+  const payPeriods = buildPayPeriods();
 
   // Local notifications
   const [notif, setNotif] = useState<string | null>(null);
@@ -233,7 +261,18 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     const matchesEmp = filterEmployee ? e.employeeName.toLowerCase().includes(filterEmployee.toLowerCase()) : true;
     const matchesJob = filterJob ? e.jobId === filterJob : true;
     const matchesCode = filterCostCode ? e.costCode === filterCostCode : true;
-    const matchesDate = filterDate ? e.date === filterDate : true;
+
+    let matchesDate = true;
+    if (filterDateMode === 'single' && filterDate) {
+      matchesDate = e.date === filterDate;
+    } else if (filterDateMode === 'range') {
+      if (filterDateFrom) matchesDate = matchesDate && e.date >= filterDateFrom;
+      if (filterDateTo)   matchesDate = matchesDate && e.date <= filterDateTo;
+    } else if (filterDateMode === 'period') {
+      const p = payPeriods[filterPeriodIdx];
+      if (p) matchesDate = e.date >= p.start && e.date <= p.end;
+    }
+
     return matchesEmp && matchesJob && matchesCode && matchesDate;
   });
 
@@ -1411,78 +1450,140 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
             </div>
 
             {/* Filtering Matrix Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 bg-gray-50 p-4 rounded-xl border border-gray-200" id="filter-matrix-grid">
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                  Employee
-                </label>
-                {(() => {
-                  // Merge registered users + any names from entries not already covered
-                  const registeredNames = new Set(registeredEmployees.map(u => u.name));
-                  const entryNames = [...new Set(entries.map(e => e.employeeName))].filter(n => !registeredNames.has(n)).sort();
-                  const allNames = [...registeredEmployees.map(u => u.name), ...entryNames];
-                  return (
-                    <select
-                      value={filterEmployee}
-                      onChange={(e) => setFilterEmployee(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
-                      id="filter-worker-name-input"
-                    >
-                      <option value="">All Employees {allNames.length > 0 ? `(${allNames.length})` : ''}</option>
-                      {allNames.map(name => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  );
-                })()}
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3" id="filter-matrix-grid">
+
+              {/* Row 1: Dropdowns */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Employee</label>
+                  {(() => {
+                    const registeredNames = new Set(registeredEmployees.map(u => u.name));
+                    const entryNames = [...new Set(entries.map(e => e.employeeName))].filter(n => !registeredNames.has(n)).sort();
+                    const allNames = [...registeredEmployees.map(u => u.name), ...entryNames];
+                    return (
+                      <select
+                        value={filterEmployee}
+                        onChange={e => setFilterEmployee(e.target.value)}
+                        className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                        id="filter-worker-name-input"
+                      >
+                        <option value="">All Employees</option>
+                        {allNames.map(name => <option key={name} value={name}>{name}</option>)}
+                      </select>
+                    );
+                  })()}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Job Site</label>
+                  <select
+                    value={filterJob}
+                    onChange={e => setFilterJob(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    id="filter-job-select"
+                  >
+                    <option value="">All Sites</option>
+                    {jobs.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Cost Code</label>
+                  <select
+                    value={filterCostCode}
+                    onChange={e => setFilterCostCode(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    id="filter-costcode-select"
+                  >
+                    <option value="">All Codes</option>
+                    {COST_CODES.map(code => <option key={code} value={code}>{code}</option>)}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                  Job Site
-                </label>
-                <select
-                  value={filterJob}
-                  onChange={(e) => setFilterJob(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
-                  id="filter-job-select"
-                >
-                  <option value="">All Sites</option>
-                  {jobs.map(j => (
-                    <option key={j.id} value={j.id}>{j.name}</option>
-                  ))}
-                </select>
+              {/* Row 2: Date filter with mode toggle */}
+              <div className="border-t border-gray-200 pt-3 space-y-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Date Filter</label>
+                  <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
+                    {(['single', 'period', 'range'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setFilterDateMode(mode)}
+                        className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                          filterDateMode === mode
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        {mode === 'single' ? 'Single Day' : mode === 'period' ? 'Pay Period' : 'Date Range'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filterDateMode === 'single' && (
+                  <input
+                    type="date"
+                    value={filterDate}
+                    onChange={e => setFilterDate(e.target.value)}
+                    className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-blue-500"
+                    id="filter-shift-day"
+                  />
+                )}
+
+                {filterDateMode === 'period' && (
+                  <select
+                    value={filterPeriodIdx}
+                    onChange={e => setFilterPeriodIdx(Number(e.target.value))}
+                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                  >
+                    {payPeriods.map((p, i) => (
+                      <option key={p.start} value={i}>{p.label}</option>
+                    ))}
+                  </select>
+                )}
+
+                {filterDateMode === 'range' && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-gray-500 font-semibold shrink-0">From</label>
+                      <input
+                        type="date"
+                        value={filterDateFrom}
+                        onChange={e => setFilterDateFrom(e.target.value)}
+                        className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-gray-500 font-semibold shrink-0">To</label>
+                      <input
+                        type="date"
+                        value={filterDateTo}
+                        onChange={e => setFilterDateTo(e.target.value)}
+                        className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                  Cost Code
-                </label>
-                <select
-                  value={filterCostCode}
-                  onChange={(e) => setFilterCostCode(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
-                  id="filter-costcode-select"
-                >
-                  <option value="">All Codes</option>
-                  {COST_CODES.map(code => (
-                    <option key={code} value={code}>{code}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                  Shift Date
-                </label>
-                <input
-                  type="date"
-                  value={filterDate}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-blue-500"
-                  id="filter-shift-day"
-                />
-              </div>
+              {/* Clear all */}
+              {(filterEmployee || filterJob || filterCostCode || filterDate || filterDateFrom || filterDateTo) && (
+                <div className="flex justify-end border-t border-gray-200 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterEmployee(''); setFilterJob(''); setFilterCostCode('');
+                      setFilterDate(''); setFilterDateFrom(''); setFilterDateTo('');
+                    }}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <XSquare className="w-3 h-3" /> Clear All Filters
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Quick Summary Statistical Reports */}
