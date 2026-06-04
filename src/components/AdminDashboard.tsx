@@ -14,7 +14,7 @@ import {
   setDoc
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { JobSite, TimeEntry, AppSettings, COST_CODES, TimeOffRequest } from '../types';
+import { JobSite, TimeEntry, AppSettings, COST_CODES, TimeOffRequest, PendingEmployee } from '../types';
 import {
   Briefcase,
   FileSpreadsheet,
@@ -92,6 +92,20 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [travelHomeAddress, setTravelHomeAddress] = useState<string>('');
   const [travelHomeLat, setTravelHomeLat] = useState<number>(0);
   const [travelHomeLng, setTravelHomeLng] = useState<number>(0);
+
+  // Pre-register employee form
+  const [preRegFirstName, setPreRegFirstName] = useState('');
+  const [preRegLastName, setPreRegLastName] = useState('');
+  const [preRegEmail, setPreRegEmail] = useState('');
+  const [preRegPhone, setPreRegPhone] = useState('');
+  const [preRegJobTitle, setPreRegJobTitle] = useState('');
+  const [preRegRate, setPreRegRate] = useState('');
+  const [preRegAddress, setPreRegAddress] = useState('');
+  const [preRegLat, setPreRegLat] = useState('');
+  const [preRegLng, setPreRegLng] = useState('');
+  const [preRegRole, setPreRegRole] = useState<'employee' | 'admin'>('employee');
+  const [preRegLoading, setPreRegLoading] = useState(false);
+  const [pendingEmployees, setPendingEmployees] = useState<PendingEmployee[]>([]);
 
   // Map helpers
   const osmEmbedUrl = (lat: number, lng: number) =>
@@ -176,12 +190,21 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       setTimeOffRequests([]);
     });
 
+    const unsubscribePending = onSnapshot(collection(db, 'pending_employees'), (snapshot) => {
+      const data = snapshot.docs.map(d => d.data() as PendingEmployee);
+      data.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+      setPendingEmployees(data);
+    }, () => {
+      setPendingEmployees([]);
+    });
+
     return () => {
       unsubscribeEntries();
       unsubscribeJobs();
       unsubscribeSettings();
       unsubscribeUsers();
       unsubscribeTimeOff();
+      unsubscribePending();
     };
   }, []);
 
@@ -412,6 +435,52 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     } catch (err) {
       console.error(err);
       alert('Failed to update employee travel profile.');
+    }
+  };
+
+  // Pre-register a new employee
+  const handlePreRegisterEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const emailKey = preRegEmail.trim().toLowerCase();
+    if (!emailKey || !preRegFirstName.trim() || !preRegLastName.trim()) return;
+    setPreRegLoading(true);
+    try {
+      const name = `${preRegFirstName.trim()} ${preRegLastName.trim()}`;
+      const payload: Record<string, any> = {
+        email: emailKey,
+        name,
+        role: preRegRole,
+        createdAt: new Date(),
+        createdBy: user.uid,
+        claimed: false,
+      };
+      if (preRegJobTitle.trim())  payload.jobTitle = preRegJobTitle.trim();
+      if (preRegRate)             payload.billableRate = Number(preRegRate);
+      if (preRegPhone.trim())     payload.phoneNumber = preRegPhone.trim();
+      if (preRegAddress.trim())   payload.homeAddress = preRegAddress.trim();
+      if (preRegLat)              payload.homeLatitude = Number(preRegLat);
+      if (preRegLng)              payload.homeLongitude = Number(preRegLng);
+
+      await setDoc(doc(db, 'pending_employees', emailKey), payload);
+      setPreRegFirstName(''); setPreRegLastName(''); setPreRegEmail('');
+      setPreRegPhone(''); setPreRegJobTitle(''); setPreRegRate('');
+      setPreRegAddress(''); setPreRegLat(''); setPreRegLng('');
+      setPreRegRole('employee');
+      triggerToast(`Profile created for ${name}. They can now sign in with ${emailKey}.`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to create employee profile.');
+    }
+    setPreRegLoading(false);
+  };
+
+  const handleDeletePendingEmployee = async (email: string) => {
+    if (!confirm(`Remove pending registration for ${email}?`)) return;
+    try {
+      await deleteDoc(doc(db, 'pending_employees', email));
+      triggerToast('Pending registration removed.');
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -746,79 +815,220 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
             </button>
           </div>
 
-          {/* Employee Home Address Editor */}
+          {/* Add Employee Card */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
-              <Navigation className="w-4 h-4 text-gray-400" />
-              Employee Home Address
+              <Users className="w-4 h-4 text-gray-400" />
+              Add Employee
             </h3>
+            <p className="text-[10px] text-gray-400 leading-tight -mt-1">
+              Create a profile. Employee signs in with this email to claim it.
+            </p>
 
-            <div>
-              <label className="block text-[10.5px] text-gray-500 mb-1">Select Employee</label>
-              <select
-                value={selectedEmpForTravel}
-                onChange={(e) => setSelectedEmpForTravel(e.target.value)}
-                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
-              >
-                <option value="">— Choose employee —</option>
-                {registeredEmployees.map(emp => (
-                  <option key={emp.uid} value={emp.uid}>{emp.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {selectedEmpForTravel && (
-              <div className="space-y-3">
+            <form onSubmit={handlePreRegisterEmployee} className="space-y-3">
+              {/* Name row */}
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10.5px] text-gray-500 mb-1">Home Address</label>
+                  <label className="block text-[10px] text-gray-500 mb-1">First Name *</label>
                   <input
                     type="text"
-                    placeholder="123 Main St, City, State"
-                    value={travelHomeAddress}
-                    onChange={(e) => setTravelHomeAddress(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    required
+                    placeholder="John"
+                    value={preRegFirstName}
+                    onChange={e => setPreRegFirstName(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-gray-500 mb-1">Latitude</label>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      value={travelHomeLat}
-                      onChange={(e) => setTravelHomeLat(Number(e.target.value))}
-                      className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-gray-500 mb-1">Longitude</label>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      value={travelHomeLng}
-                      onChange={(e) => setTravelHomeLng(Number(e.target.value))}
-                      className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Doe"
+                    value={preRegLastName}
+                    onChange={e => setPreRegLastName(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
                 </div>
-                <p className="text-[9.5px] text-gray-400 leading-tight">
-                  Find coordinates via{' '}
-                  <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
-                    Google Maps
-                  </a>{' '}
-                  (right-click a location → "What's here?")
-                </p>
-                <button
-                  type="button"
-                  onClick={handleSaveEmployeeTravel}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-xs text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer active:translate-y-px shadow-sm"
-                >
-                  <MapPin className="w-3.5 h-3.5" />
-                  Save Home Address
-                </button>
               </div>
-            )}
+
+              {/* Email */}
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="worker@company.com"
+                  value={preRegEmail}
+                  onChange={e => setPreRegEmail(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  placeholder="(555) 000-0000"
+                  value={preRegPhone}
+                  onChange={e => setPreRegPhone(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Job Title */}
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Job Title</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Field Technician"
+                  value={preRegJobTitle}
+                  onChange={e => setPreRegJobTitle(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Billable Rate */}
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Billable Rate ($/hr)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={preRegRate}
+                  onChange={e => setPreRegRate(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Address */}
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Home Address</label>
+                <input
+                  type="text"
+                  placeholder="123 Main St, City, State"
+                  value={preRegAddress}
+                  onChange={e => setPreRegAddress(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* GPS Coords for travel calc */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1">Latitude <span className="text-gray-300">(GPS)</span></label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    placeholder="37.7749"
+                    value={preRegLat}
+                    onChange={e => setPreRegLat(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1">Longitude <span className="text-gray-300">(GPS)</span></label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    placeholder="-122.4194"
+                    value={preRegLng}
+                    onChange={e => setPreRegLng(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
+                  />
+                </div>
+              </div>
+              <p className="text-[9px] text-gray-400 leading-tight">
+                GPS coordinates used for auto travel-time calculation.{' '}
+                <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                  Find on Google Maps
+                </a>
+              </p>
+
+              {/* Role toggle */}
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Access Level</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPreRegRole('employee')}
+                    className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                      preRegRole === 'employee'
+                        ? 'bg-blue-50 text-blue-700 border-blue-300'
+                        : 'bg-white text-gray-400 border-gray-200 hover:text-gray-600'
+                    }`}
+                  >
+                    Employee
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreRegRole('admin')}
+                    className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                      preRegRole === 'admin'
+                        ? 'bg-amber-50 text-amber-700 border-amber-300'
+                        : 'bg-white text-gray-400 border-gray-200 hover:text-gray-600'
+                    }`}
+                  >
+                    Admin
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={preRegLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-xs text-white font-bold py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer active:translate-y-px shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {preRegLoading ? 'Creating...' : 'Create Employee Profile'}
+              </button>
+            </form>
           </div>
+
+          {/* Pending Registrations list */}
+          {pendingEmployees.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
+              <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  Pending Invites
+                </span>
+                <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500">
+                  {pendingEmployees.filter(p => !p.claimed).length} unclaimed
+                </span>
+              </h3>
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {pendingEmployees.map(p => (
+                  <div key={p.email} className={`rounded-xl border px-3 py-2 text-xs flex items-start justify-between gap-2 ${p.claimed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="font-bold text-gray-800 truncate">{p.name}</div>
+                      <div className="text-[10px] text-gray-500 truncate">{p.email}</div>
+                      {p.jobTitle && <div className="text-[10px] text-gray-400">{p.jobTitle}</div>}
+                      <span className={`inline-block text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
+                        p.claimed
+                          ? 'bg-green-100 border-green-200 text-green-700'
+                          : 'bg-amber-50 border-amber-200 text-amber-700'
+                      }`}>
+                        {p.claimed ? 'Claimed' : 'Pending'}
+                      </span>
+                    </div>
+                    {!p.claimed && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePendingEmployee(p.email)}
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg shrink-0 transition-all cursor-pointer"
+                        title="Remove invite"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Job Sites Creation Card */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="jobs-creator-card">

@@ -10,6 +10,26 @@ export interface UserProfile {
   homeAddress?: string;
   homeLatitude?: number;
   homeLongitude?: number;
+  // Extended profile fields — populated from pending_employees on claim
+  jobTitle?: string;
+  billableRate?: number;
+  phoneNumber?: string;
+}
+
+export interface PendingEmployee {
+  email: string;       // lowercase; also the Firestore doc ID
+  name: string;
+  role: UserRole;
+  jobTitle?: string;
+  billableRate?: number;
+  phoneNumber?: string;
+  homeAddress?: string;
+  homeLatitude?: number;
+  homeLongitude?: number;
+  createdAt: any;
+  createdBy: string;   // admin uid
+  claimed: boolean;
+  claimedAt?: any;
 }
 
 export interface JobSite {

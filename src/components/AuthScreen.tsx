@@ -5,7 +5,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider
 } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { Lock, Mail, User, Clock, ToggleLeft, AlertCircle, ShieldAlert } from 'lucide-react';
 
@@ -32,18 +32,37 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         // Sign Up Flow
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCred.user.uid;
+        const emailLower = email.toLowerCase().trim();
 
-        // Force check: the standard user email from runtime is automatically admin
-        const assignedRole = email.toLowerCase() === 'kenneytyler14@gmail.com' ? 'admin' : role;
+        // Check for admin pre-registered pending profile
+        const pendingRef = doc(db, 'pending_employees', emailLower);
+        const pendingSnap = await getDoc(pendingRef);
+        const pending = pendingSnap.exists() ? pendingSnap.data() : null;
 
-        // Create the profile document inside Firestore
-        await setDoc(doc(db, 'users', uid), {
+        const assignedRole = emailLower === 'kenneytyler14@gmail.com'
+          ? 'admin'
+          : (pending?.role ?? role);
+
+        const userDoc: Record<string, any> = {
           uid,
-          name: name || 'Anonymous Worker',
-          email: email.toLowerCase(),
+          name: pending?.name || name || 'Anonymous Worker',
+          email: emailLower,
           role: assignedRole,
           createdAt: new Date(),
-        });
+          ...(pending?.jobTitle      && { jobTitle: pending.jobTitle }),
+          ...(pending?.billableRate  && { billableRate: pending.billableRate }),
+          ...(pending?.phoneNumber   && { phoneNumber: pending.phoneNumber }),
+          ...(pending?.homeAddress   && { homeAddress: pending.homeAddress }),
+          ...(pending?.homeLatitude  && { homeLatitude: pending.homeLatitude }),
+          ...(pending?.homeLongitude && { homeLongitude: pending.homeLongitude }),
+        };
+
+        await setDoc(doc(db, 'users', uid), userDoc);
+
+        // Mark pending profile as claimed
+        if (pending) {
+          await setDoc(pendingRef, { claimed: true, claimedAt: new Date() }, { merge: true });
+        }
 
         onSuccess(uid);
       } else {
@@ -75,16 +94,38 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
       const userCred = await signInWithPopup(auth, provider);
       const user = userCred.user;
 
-      // Check if user profile already has a record; if not, initialize as employee (or admin for our target email)
-      const assignedRole = user.email?.toLowerCase() === 'kenneytyler14@gmail.com' ? 'admin' : 'employee';
+      const userEmail = user.email?.toLowerCase() || '';
+      const assignedRole = userEmail === 'kenneytyler14@gmail.com' ? 'admin' : 'employee';
 
-      await setDoc(doc(db, 'users', user.uid), {
+      // Check for admin pre-registered pending profile
+      const pendingRef = doc(db, 'pending_employees', userEmail);
+      const pendingSnap = await getDoc(pendingRef);
+      const pending = pendingSnap.exists() ? pendingSnap.data() : null;
+
+      const mergePayload: Record<string, any> = {
         uid: user.uid,
-        name: user.displayName || 'Google Employee',
-        email: user.email?.toLowerCase() || '',
-        role: assignedRole,
-        createdAt: new Date(),
-      }, { merge: true });
+        name: user.displayName || pending?.name || 'Google Employee',
+        email: userEmail,
+        role: pending?.role ?? assignedRole,
+        ...(pending?.jobTitle      && { jobTitle: pending.jobTitle }),
+        ...(pending?.billableRate  && { billableRate: pending.billableRate }),
+        ...(pending?.phoneNumber   && { phoneNumber: pending.phoneNumber }),
+        ...(pending?.homeAddress   && { homeAddress: pending.homeAddress }),
+        ...(pending?.homeLatitude  && { homeLatitude: pending.homeLatitude }),
+        ...(pending?.homeLongitude && { homeLongitude: pending.homeLongitude }),
+      };
+
+      // Only set createdAt on first sign-in (merge won't overwrite existing fields for
+      // the keys not present here, but we guard createdAt explicitly)
+      const existingUserSnap = await getDoc(doc(db, 'users', user.uid));
+      if (!existingUserSnap.exists()) mergePayload.createdAt = new Date();
+
+      await setDoc(doc(db, 'users', user.uid), mergePayload, { merge: true });
+
+      // Mark pending profile as claimed
+      if (pending && !pending.claimed) {
+        await setDoc(pendingRef, { claimed: true, claimedAt: new Date() }, { merge: true });
+      }
 
       onSuccess(user.uid);
     } catch (err: any) {

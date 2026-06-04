@@ -64,7 +64,7 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'email', 'name', 'role', 'createdAt', 'homeAddress', 'homeLatitude', 'homeLongitude']) &&
+             data.keys().hasOnly(['uid', 'email', 'name', 'role', 'createdAt', 'homeAddress', 'homeLatitude', 'homeLongitude', 'jobTitle', 'billableRate', 'phoneNumber']) &&
              data.uid == request.auth.uid &&
              data.uid is string &&
              data.email is string && data.email.size() <= 200 &&
@@ -173,6 +173,19 @@ service cloud.firestore {
           incoming().adminSigned == false
         )
       );
+    }
+
+    // --- Pending Employees Collection Rules ---
+    match /pending_employees/{email} {
+      // Admin can do everything
+      allow read, write: if isAdmin();
+      // Employee can read their own pending doc by email match (for claim on signup)
+      allow get: if isSignedIn() && request.auth.token.email == email;
+      // Employee can mark their own as claimed
+      allow update: if isSignedIn() && request.auth.token.email == email &&
+        incoming().claimed == true &&
+        incoming().email == existing().email &&
+        incoming().name == existing().name;
     }
 
     // --- Reminders Collection Rules ---
