@@ -112,7 +112,6 @@ function getEntryTotals(entry: TimeEntry) {
   const travelMins = (entry.travelTimeIn || 0) + (entry.travelTimeOut || 0);
   return {
     worked: workMins / 60,
-    billable: (workMins + travelMins) / 60,
     travel: travelMins,
     lunch,
   };
@@ -120,6 +119,68 @@ function getEntryTotals(entry: TimeEntry) {
 
 function isTimeOffEntry(entry: TimeEntry) {
   return entry.jobId === 'time_off_pto' || entry.jobId === 'time_off_unpaid';
+}
+
+// ─── Holiday helpers ──────────────────────────────────────────────────────────
+
+interface Holiday {
+  date: string; // YYYY-MM-DD
+  name: string;
+}
+
+function getNthWeekday(year: number, month: number, n: number, weekday: number): Date {
+  // month: 1-12, weekday: 0=Sun…6=Sat, n: 1-based
+  const d = new Date(year, month - 1, 1);
+  const dayOffset = (weekday - d.getDay() + 7) % 7;
+  d.setDate(1 + dayOffset + (n - 1) * 7);
+  return d;
+}
+
+function getLastWeekday(year: number, month: number, weekday: number): Date {
+  const d = new Date(year, month, 0); // last day of month
+  const diff = (d.getDay() - weekday + 7) % 7;
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+function observedDate(d: Date): Date {
+  const day = d.getDay();
+  const obs = new Date(d);
+  if (day === 6) obs.setDate(d.getDate() - 1); // Sat → Fri
+  else if (day === 0) obs.setDate(d.getDate() + 1); // Sun → Mon
+  return obs;
+}
+
+function toYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getHolidaysForYear(year: number): Holiday[] {
+  const add = (d: Date, name: string): Holiday => ({ date: toYMD(observedDate(d)), name });
+  return [
+    add(new Date(year, 0, 1),                        "New Year's Day"),
+    add(getNthWeekday(year, 1, 3, 1),                "Martin Luther King Jr. Day"),
+    add(getNthWeekday(year, 2, 3, 1),                "Presidents' Day"),
+    add(getLastWeekday(year, 5, 1),                  "Memorial Day"),
+    add(new Date(year, 5, 19),                       "Juneteenth"),
+    add(new Date(year, 6, 4),                        "Independence Day"),
+    add(getNthWeekday(year, 9, 1, 1),                "Labor Day"),
+    add(getNthWeekday(year, 10, 2, 1),               "Columbus Day"),
+    add(new Date(year, 10, 11),                      "Veterans Day"),
+    add(getNthWeekday(year, 11, 4, 4),               "Thanksgiving Day"),
+    add(new Date(year, 11, 25),                      "Christmas Day"),
+  ];
+}
+
+function getHolidaysInPeriod(start: string, end: string): Holiday[] {
+  const startYear = parseInt(start.slice(0, 4));
+  const endYear = parseInt(end.slice(0, 4));
+  const all: Holiday[] = [];
+  for (let y = startYear; y <= endYear; y++) all.push(...getHolidaysForYear(y));
+  return all.filter(h => h.date >= start && h.date <= end);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -181,14 +242,27 @@ export default function BiweeklyTimecardPanel({
       const toff = isTimeOffEntry(e);
       return {
         worked: acc.worked + (toff ? 0 : t.worked),
-        billable: acc.billable + (toff ? 0 : t.billable),
         travel: acc.travel + (toff ? 0 : t.travel),
         pto: acc.pto + (e.jobId === 'time_off_pto' ? t.worked : 0),
         unpaid: acc.unpaid + (e.jobId === 'time_off_unpaid' ? t.worked : 0),
       };
     },
-    { worked: 0, billable: 0, travel: 0, pto: 0, unpaid: 0 },
+    { worked: 0, travel: 0, pto: 0, unpaid: 0 },
   );
+
+  const grandTotal = totals.worked + (totals.travel / 60) + totals.pto;
+
+  const holidaysInPeriod = getHolidaysInPeriod(period.start, period.end);
+
+  type TableRow = { type: 'entry'; entry: typeof periodEntries[0] } | { type: 'holiday'; date: string; name: string };
+  const tableRows: TableRow[] = [
+    ...periodEntries.map(e => ({ type: 'entry' as const, entry: e })),
+    ...holidaysInPeriod.map(h => ({ type: 'holiday' as const, date: h.date, name: h.name })),
+  ].sort((a, b) => {
+    const da = a.type === 'entry' ? a.entry.date : a.date;
+    const db = b.type === 'entry' ? b.entry.date : b.date;
+    return da.localeCompare(db);
+  });
 
   const today = new Date().toISOString().split('T')[0];
   const canSign = today >= period.end;
@@ -486,37 +560,36 @@ export default function BiweeklyTimecardPanel({
         </div>
       </div>
 
-      {/* Summary stat bar */}
+      {/* Summary stat bar — always 5 cards in order: Regular, Travel, PTO, Non-paid, Total */}
       {periodEntries.length > 0 && (
-        <div className={`grid gap-3 ${(totals.pto > 0 || totals.unpaid > 0) ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="bg-white border border-gray-200 rounded-xl p-3.5 text-center shadow-sm">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Regular Hours</div>
+            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Regular</div>
             <div className="text-2xl font-black text-blue-600 font-mono">{totals.worked.toFixed(2)}</div>
+            <div className="text-[9px] text-gray-400 font-medium mt-0.5">hrs</div>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-3.5 text-center shadow-sm">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Billable Hours</div>
-            <div className="text-2xl font-black text-green-600 font-mono">{totals.billable.toFixed(2)}</div>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-3.5 text-center shadow-sm">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Travel (mins)</div>
+            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Travel</div>
             <div className="text-2xl font-black text-gray-700 font-mono">{totals.travel}</div>
+            <div className="text-[9px] text-gray-400 font-medium mt-0.5">mins</div>
           </div>
-          {totals.pto > 0 && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-3.5 text-center shadow-sm">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-green-500 mb-1 flex items-center justify-center gap-1">
-                <Plane className="w-3 h-3" />PTO Hours
-              </div>
-              <div className="text-2xl font-black text-green-600 font-mono">{totals.pto.toFixed(2)}</div>
+          <div className={`rounded-xl p-3.5 text-center shadow-sm border ${totals.pto > 0 ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
+            <div className={`text-[10px] uppercase font-bold tracking-wider mb-1 flex items-center justify-center gap-1 ${totals.pto > 0 ? 'text-green-500' : 'text-gray-400'}`}>
+              <Plane className="w-3 h-3" />PTO
             </div>
-          )}
-          {totals.unpaid > 0 && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-center shadow-sm">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1 flex items-center justify-center gap-1">
-                <Plane className="w-3 h-3" />Unpaid Off
-              </div>
-              <div className="text-2xl font-black text-gray-600 font-mono">{totals.unpaid.toFixed(2)}</div>
-            </div>
-          )}
+            <div className={`text-2xl font-black font-mono ${totals.pto > 0 ? 'text-green-600' : 'text-gray-300'}`}>{totals.pto.toFixed(2)}</div>
+            <div className="text-[9px] text-gray-400 font-medium mt-0.5">hrs</div>
+          </div>
+          <div className={`rounded-xl p-3.5 text-center shadow-sm border ${totals.unpaid > 0 ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'}`}>
+            <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Non-paid</div>
+            <div className={`text-2xl font-black font-mono ${totals.unpaid > 0 ? 'text-gray-600' : 'text-gray-300'}`}>{totals.unpaid.toFixed(2)}</div>
+            <div className="text-[9px] text-gray-400 font-medium mt-0.5">hrs</div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-center shadow-sm">
+            <div className="text-[10px] uppercase font-bold tracking-wider text-blue-500 mb-1">Total</div>
+            <div className="text-2xl font-black text-blue-700 font-mono">{grandTotal.toFixed(2)}</div>
+            <div className="text-[9px] text-blue-400 font-medium mt-0.5">hrs</div>
+          </div>
         </div>
       )}
 
@@ -529,6 +602,7 @@ export default function BiweeklyTimecardPanel({
           </h3>
           <span className="text-[11px] bg-gray-100 text-gray-500 font-bold px-2.5 py-1 rounded-full">
             {periodEntries.length} {periodEntries.length === 1 ? 'entry' : 'entries'}
+            {holidaysInPeriod.length > 0 && ` · ${holidaysInPeriod.length} holiday${holidaysInPeriod.length > 1 ? 's' : ''}`}
           </span>
         </div>
 
@@ -538,26 +612,61 @@ export default function BiweeklyTimecardPanel({
               <tr>
                 <th className="px-4 py-3 text-left">Date</th>
                 <th className="px-4 py-3 text-left">Job Site</th>
-                <th className="px-4 py-3 text-left">Cost Code</th>
+                <th className="px-4 py-3 text-left">Code</th>
                 <th className="px-4 py-3 text-center">In</th>
                 <th className="px-4 py-3 text-center">Out</th>
                 <th className="px-4 py-3 text-right">Regular</th>
-                <th className="px-4 py-3 text-right">Billable</th>
+                <th className="px-4 py-3 text-right">Travel</th>
+                <th className="px-4 py-3 text-right">PTO</th>
+                <th className="px-4 py-3 text-right">Non-paid</th>
+                <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3 text-left">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {periodEntries.length === 0 ? (
+              {tableRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400 italic">
+                  <td colSpan={11} className="px-4 py-10 text-center text-gray-400 italic">
                     No completed entries recorded for this pay period.
                   </td>
                 </tr>
               ) : (
-                periodEntries.map(entry => {
+                tableRows.map((row, idx) => {
+                  // ── Holiday row ──────────────────────────────────────────
+                  if (row.type === 'holiday') {
+                    return (
+                      <tr key={`holiday-${row.date}`} className="bg-amber-50/60 hover:bg-amber-50 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-amber-800">
+                          {fmtDay(row.date)}
+                        </td>
+                        <td className="px-4 py-3 text-amber-700 font-medium" colSpan={4}>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-lg leading-none">🎉</span>
+                            {row.name}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">—</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase bg-amber-100 border border-amber-300 text-amber-800 px-2 py-0.5 rounded-full">
+                            Holiday
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  // ── Time entry row ────────────────────────────────────────
+                  const entry = row.entry;
                   const t = getEntryTotals(entry);
                   const toff = isTimeOffEntry(entry);
                   const isPTO = entry.jobId === 'time_off_pto';
+                  const rowTotal = toff
+                    ? t.worked
+                    : t.worked + (t.travel / 60);
                   return (
                     <tr key={entry.id} className={`hover:bg-gray-50 transition-colors ${toff ? (isPTO ? 'bg-green-50/40' : 'bg-gray-50/60') : ''}`}>
                       <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-700">
@@ -572,7 +681,7 @@ export default function BiweeklyTimecardPanel({
                         ) : entry.jobName}
                       </td>
                       <td className="px-4 py-3 font-mono text-gray-500 whitespace-nowrap">
-                        {entry.costCode.split(' ')[0]}
+                        {toff ? '—' : entry.costCode.split(' ')[0]}
                       </td>
                       <td className="px-4 py-3 text-center font-mono text-gray-500 whitespace-nowrap">
                         {toff ? '—' : fmtTime(entry.clockInTime)}
@@ -580,22 +689,47 @@ export default function BiweeklyTimecardPanel({
                       <td className="px-4 py-3 text-center font-mono text-gray-500 whitespace-nowrap">
                         {toff ? '—' : fmtTime(entry.clockOutTime)}
                       </td>
+                      {/* Regular */}
                       <td className="px-4 py-3 text-right font-mono font-bold whitespace-nowrap">
                         {toff ? (
-                          <span className={isPTO ? 'text-green-600' : 'text-gray-500'}>
-                            {t.worked.toFixed(2)}h
-                          </span>
+                          <span className="text-gray-300">—</span>
                         ) : (
                           <span className="text-blue-600">{t.worked.toFixed(2)}h</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold whitespace-nowrap">
-                        {toff ? (
-                          <span className="text-gray-400">—</span>
+                      {/* Travel */}
+                      <td className="px-4 py-3 text-right font-mono whitespace-nowrap">
+                        {toff || t.travel === 0 ? (
+                          <span className="text-gray-300">—</span>
                         ) : (
-                          <span className="text-green-600">{t.billable.toFixed(2)}h</span>
+                          <span className="text-gray-600">{t.travel}m</span>
                         )}
                       </td>
+                      {/* PTO */}
+                      <td className="px-4 py-3 text-right font-mono font-bold whitespace-nowrap">
+                        {isPTO ? (
+                          <span className="text-green-600">{t.worked.toFixed(2)}h</span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* Non-paid */}
+                      <td className="px-4 py-3 text-right font-mono font-bold whitespace-nowrap">
+                        {entry.jobId === 'time_off_unpaid' ? (
+                          <span className="text-gray-500">{t.worked.toFixed(2)}h</span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      {/* Total */}
+                      <td className="px-4 py-3 text-right font-mono font-bold whitespace-nowrap">
+                        {entry.jobId === 'time_off_unpaid' ? (
+                          <span className="text-gray-400">{t.worked.toFixed(2)}h</span>
+                        ) : (
+                          <span className="text-gray-800">{rowTotal.toFixed(2)}h</span>
+                        )}
+                      </td>
+                      {/* Status */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         {toff ? (
                           <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
@@ -627,25 +761,26 @@ export default function BiweeklyTimecardPanel({
             </tbody>
             {periodEntries.length > 0 && (
               <tfoot>
-                <tr className="bg-gray-50 border-t-2 border-gray-200">
+                <tr className="bg-gray-50 border-t-2 border-gray-200 text-xs">
                   <td className="px-4 py-3 font-black text-gray-700 uppercase tracking-wide text-[10px]" colSpan={5}>
                     Period Totals
                   </td>
-                  <td className="px-4 py-3 text-right font-black text-blue-700 font-mono">
+                  <td className="px-4 py-3 text-right font-black text-blue-700 font-mono whitespace-nowrap">
                     {totals.worked.toFixed(2)}h
-                    {totals.pto > 0 && (
-                      <div className="text-[9px] text-green-600 font-bold">+{totals.pto.toFixed(2)}h PTO</div>
-                    )}
-                    {totals.unpaid > 0 && (
-                      <div className="text-[9px] text-gray-500 font-bold">+{totals.unpaid.toFixed(2)}h unpaid</div>
-                    )}
                   </td>
-                  <td className="px-4 py-3 text-right font-black text-green-700 font-mono">
-                    {totals.billable.toFixed(2)}h
+                  <td className="px-4 py-3 text-right font-black text-gray-600 font-mono whitespace-nowrap">
+                    {totals.travel > 0 ? `${totals.travel}m` : '—'}
                   </td>
-                  <td className="px-4 py-3 text-[10px] font-mono text-gray-400">
-                    +{totals.travel}m travel
+                  <td className="px-4 py-3 text-right font-black text-green-700 font-mono whitespace-nowrap">
+                    {totals.pto > 0 ? `${totals.pto.toFixed(2)}h` : '—'}
                   </td>
+                  <td className="px-4 py-3 text-right font-black text-gray-500 font-mono whitespace-nowrap">
+                    {totals.unpaid > 0 ? `${totals.unpaid.toFixed(2)}h` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right font-black text-gray-800 font-mono whitespace-nowrap">
+                    {grandTotal.toFixed(2)}h
+                  </td>
+                  <td />
                 </tr>
               </tfoot>
             )}
