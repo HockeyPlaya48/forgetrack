@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { JobSite, TimeEntry, AppSettings, COST_CODES, TimeOffRequest, PendingEmployee } from '../types';
+import { getHaversineDistance } from './MapMock';
 import {
   Briefcase,
   FileSpreadsheet,
@@ -1321,11 +1322,30 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {entries.filter(e => e.status !== 'active' && !e.isApproved).map((item) => {
+                {entries
+                  .filter(e => e.status !== 'active' && !e.isApproved)
+                  .sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+                  .map((item) => {
                   const data = getTotals(item);
                   const isManual = item.isManualEdit;
+
+                  // Off-site detection — compare each GPS event against job site radius
+                  const jobSite = jobs.find(j => j.id === item.jobId);
+                  const isOffSite = (coords: { latitude: number; longitude: number } | null) => {
+                    if (!coords || !jobSite) return false;
+                    return getHaversineDistance(coords.latitude, coords.longitude, jobSite.latitude, jobSite.longitude) > jobSite.radius;
+                  };
+                  const gpsEvents = [
+                    { label: 'Clock In',    icon: <MapPin className="w-3 h-3 text-green-600" />,   coords: item.clockInCoords  || null },
+                    ...(item.lunchStart ? [{ label: 'Lunch Start', icon: <Coffee className="w-3 h-3 text-orange-500" />, coords: item.lunchStartCoords || null }] : []),
+                    ...(item.lunchEnd   ? [{ label: 'Lunch End',   icon: <Coffee className="w-3 h-3 text-blue-500" />,   coords: item.lunchEndCoords   || null }] : []),
+                    ...(item.clockOutTime ? [{ label: 'Clock Out', icon: <Navigation className="w-3 h-3 text-red-500" />, coords: item.clockOutCoords || null }] : []),
+                  ];
+                  const anyOffSite = gpsEvents.some(ev => isOffSite(ev.coords));
+                  const anyMissingGps = gpsEvents.some(ev => !ev.coords);
+
                   return (
-                    <div key={item.id} className="bg-white border border-amber-200 rounded-xl p-4 space-y-3 text-xs flex flex-col justify-between shadow-sm">
+                    <div key={item.id} className={`bg-white rounded-xl p-4 space-y-3 text-xs flex flex-col justify-between shadow-sm border ${anyOffSite ? 'border-red-200' : 'border-amber-200'}`}>
                       <div className="space-y-2">
 
                         {/* Header row */}
@@ -1339,6 +1359,16 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                             }`}>
                               {isManual ? 'Manual Entry' : 'GPS Verified'}
                             </span>
+                            {anyOffSite && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200 shrink-0 flex items-center gap-0.5">
+                                * Off-site
+                              </span>
+                            )}
+                            {!anyOffSite && anyMissingGps && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-200 shrink-0 flex items-center gap-0.5">
+                                * GPS Missing
+                              </span>
+                            )}
                           </div>
                           <span className="text-[10px] font-mono text-gray-400 shrink-0">{item.date}</span>
                         </div>
@@ -1362,23 +1392,26 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                           "{item.description}"
                         </p>
 
-                        {/* GPS Tracking — all events */}
+                        {/* GPS Tracking — all events with off-site flags */}
                         <div className="border-t border-gray-100 pt-2 space-y-1">
                           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">GPS Tracking</p>
-                          {[
-                            { label: 'Clock In', icon: <MapPin className="w-3 h-3 text-green-600" />, coords: item.clockInCoords || null },
-                            ...(item.lunchStart ? [{ label: 'Lunch Start', icon: <Coffee className="w-3 h-3 text-orange-500" />, coords: item.lunchStartCoords || null }] : []),
-                            ...(item.lunchEnd ? [{ label: 'Lunch End', icon: <Coffee className="w-3 h-3 text-blue-500" />, coords: item.lunchEndCoords || null }] : []),
-                            ...(item.clockOutTime ? [{ label: 'Clock Out', icon: <Navigation className="w-3 h-3 text-red-500" />, coords: item.clockOutCoords || null }] : []),
-                          ].map((ev, i) => (
-                            <div key={i} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[10.5px]">
-                              <div className="flex items-center gap-1.5 min-w-0">
+                          {gpsEvents.map((ev, i) => {
+                            const offSite = isOffSite(ev.coords);
+                            const dist = ev.coords && jobSite
+                              ? Math.round(getHaversineDistance(ev.coords.latitude, ev.coords.longitude, jobSite.latitude, jobSite.longitude))
+                              : null;
+                            return (
+                            <div key={i} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-[10.5px] border ${offSite ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                                 {ev.icon}
                                 <span className="font-semibold text-gray-600 shrink-0">{ev.label}</span>
                                 {ev.coords ? (
                                   <span className="font-mono text-gray-400 truncate">{ev.coords.latitude.toFixed(4)}, {ev.coords.longitude.toFixed(4)}</span>
                                 ) : (
                                   <span className="text-gray-300 italic">No GPS</span>
+                                )}
+                                {offSite && dist !== null && (
+                                  <span className="text-red-600 font-bold shrink-0">* {(dist / 1609).toFixed(1)} mi off-site</span>
                                 )}
                               </div>
                               {ev.coords ? (
@@ -1393,7 +1426,8 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                                 </a>
                               ) : null}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
 
