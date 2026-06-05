@@ -3,11 +3,14 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { Lock, Mail, User, Clock, ToggleLeft, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Lock, Mail, User, Clock, ToggleLeft, AlertCircle, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
 interface AuthScreenProps {
   onSuccess: (uid: string) => void;
@@ -19,6 +22,8 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'employee' | 'admin'>('employee');
+  const [rememberMe, setRememberMe] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,6 +33,9 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
     setLoading(true);
 
     try {
+      // Apply session persistence based on Remember Me checkbox
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+
       if (isSignUp) {
         // Sign Up Flow
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
@@ -258,16 +266,43 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                   <Lock className="h-4 w-4 text-gray-400" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                  className="block w-full pl-10 pr-10 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                   id="auth-password-input"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
+
+            {/* Remember Me — only shown on sign-in */}
+            {!isSignUp && (
+              <label className="flex items-center gap-2.5 cursor-pointer select-none w-fit">
+                <div
+                  onClick={() => setRememberMe(v => !v)}
+                  className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                    rememberMe ? 'bg-orange-600 border-orange-600' : 'bg-white border-gray-300'
+                  }`}
+                >
+                  {rememberMe && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
+                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-xs text-gray-600 font-medium">Remember me on this device</span>
+              </label>
+            )}
 
             {isSignUp && (
               <div>
