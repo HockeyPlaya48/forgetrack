@@ -899,7 +899,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6" id="employee-dashboard-content">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-800 p-5 rounded-2xl mb-6 shadow-md">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#1c0a00] p-5 rounded-2xl mb-6 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
             <Clock className="text-white w-5 h-5" />
@@ -1008,7 +1008,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           {/* Main Controls Card */}
           <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm" id="work-controls-card">
             <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-3 mb-5 flex items-center gap-2">
-              <Play className="w-4 h-4 text-blue-500" />
+              <Play className="w-4 h-4 text-orange-500" />
               Active Timecard Operations
             </h2>
 
@@ -1150,9 +1150,9 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   </div>
 
                   {/* Travel Back (Exit) — Auto-calculated read-only */}
-                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-700">
-                      <Navigation className="w-4 h-4 text-blue-500" />
+                  <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-700">
+                      <Navigation className="w-4 h-4 text-orange-500" />
                       Travel Back (Auto-calculated)
                     </div>
                     {!user.homeLatitude || !user.homeLongitude ? (
@@ -1164,7 +1164,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                       <div className="space-y-1 text-xs font-mono">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-600">Estimated travel back:</span>
-                          <span className="font-bold text-blue-700">{travelOut} min</span>
+                          <span className="font-bold text-orange-700">{travelOut} min</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-600">Company covers:</span>
@@ -1187,7 +1187,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                 {/* Cost Code + Work Description — filled before clocking out */}
                 <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
                   <p className="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-blue-500" />
+                    <FileText className="w-3.5 h-3.5 text-orange-500" />
                     Job Details (Required Before Clock-Out)
                   </p>
 
@@ -1199,7 +1199,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                     <button
                       type="button"
                       onClick={() => { setShowCostCodeDropdown(v => !v); setCostCodeSearch(''); }}
-                      className="flex items-center justify-between w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500 text-left"
+                      className="flex items-center justify-between w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-orange-500 text-left"
                     >
                       <span className="truncate">{selectedCostCode}</span>
                       {showCostCodeDropdown
@@ -1218,7 +1218,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                               placeholder="Search cost codes..."
                               value={costCodeSearch}
                               onChange={e => setCostCodeSearch(e.target.value)}
-                              className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-gray-50"
+                              className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 bg-gray-50"
                             />
                           </div>
                         </div>
@@ -1237,7 +1237,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                                 type="button"
                                 onClick={() => { setSelectedCostCode(code); setShowCostCodeDropdown(false); setCostCodeSearch(''); }}
                                 className={`w-full text-left px-3 py-2.5 text-xs transition-colors border-b border-gray-50 last:border-0 ${
-                                  selectedCostCode === code ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                                  selectedCostCode === code ? 'bg-orange-50 text-orange-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
                                 }`}
                               >{code}</button>
                             ));
@@ -1257,7 +1257,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                       value={description}
                       onChange={e => setDescription(e.target.value)}
                       placeholder="Describe the work completed on this shift..."
-                      className="block w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
+                      className="block w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 resize-none"
                     />
                     {!description.trim() && (
                       <p className="mt-1 text-[11px] text-amber-600 flex items-center gap-1">
@@ -1390,7 +1390,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-1">Travel Back (min)</label>
-                            <div className="w-full bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm font-mono text-blue-700 font-bold">
+                            <div className="w-full bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm font-mono text-orange-700 font-bold">
                               {travelOut} min
                             </div>
                           </div>
@@ -1440,7 +1440,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   <select
                     value={selectedJobId}
                     onChange={(e) => setSelectedJobId(e.target.value)}
-                    className="block w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    className="block w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                     id="job-select"
                   >
                     {jobs.map((job) => (
@@ -1452,8 +1452,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                 </div>
 
                 {/* 2. Estimated Travel Time */}
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                  <div className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
+                  <div className="text-xs font-bold text-orange-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                     <Navigation className="w-3.5 h-3.5" />
                     2. Estimated Travel Time (Auto-calculated)
                   </div>
@@ -1466,7 +1466,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                     <div className="space-y-1.5 text-xs font-mono">
                       <div className="flex items-center justify-between">
                         <span className="text-gray-600">Estimated to site:</span>
-                        <span className="font-bold text-blue-700">{travelIn} min</span>
+                        <span className="font-bold text-orange-700">{travelIn} min</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-gray-600">Company covers:</span>
@@ -1551,14 +1551,14 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                           value={timeOffNote}
                           onChange={e => setTimeOffNote(e.target.value)}
                           placeholder="e.g. Doctor appointment, sick day, personal travel..."
-                          className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-blue-400"
+                          className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-orange-400"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={handleSubmitPTODay}
                         disabled={!timeOffNote.trim()}
-                        className="w-full disabled:opacity-50 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all"
+                        className="w-full disabled:opacity-50 bg-orange-600 hover:bg-orange-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all"
                       >
                         <Plane className="w-3.5 h-3.5" />
                         Submit {[ptoEnabled && `${ptoClaimHours}h PTO`, unpaidEnabled && `${unpaidClaimHours}h Unpaid`].filter(Boolean).join(' + ')}
@@ -1603,7 +1603,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4">
               <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-500" />
+                <FileText className="w-4 h-4 text-orange-500" />
                 Missed Punch? Log a Manual Entry
               </h2>
               <button
@@ -1628,7 +1628,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                       value={manualDate}
                       onChange={(e) => setManualDate(e.target.value)}
                       required
-                      className="block w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-blue-500"
+                      className="block w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-orange-500"
                       id="manual-date-input"
                     />
                   </div>
@@ -1640,7 +1640,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                     <select
                       value={manualJobId}
                       onChange={(e) => setManualJobId(e.target.value)}
-                      className="block w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-blue-500"
+                      className="block w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-orange-500"
                       id="manual-job-select"
                     >
                       {jobs.map((job) => (
@@ -1743,7 +1743,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
 
                 <button
                   type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg text-xs transition-all active:translate-y-px cursor-pointer"
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded-lg text-xs transition-all active:translate-y-px cursor-pointer"
                   id="manual-submit-btn"
                 >
                   Request Shift Approval
@@ -1785,7 +1785,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                       </div>
 
                       <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-mono border-t border-gray-200 pt-1.5 text-gray-500">
-                        <span>Worked: <strong className="text-blue-600">{data.worked}h</strong></span>
+                        <span>Worked: <strong className="text-orange-600">{data.worked}h</strong></span>
                         {item.lunchDuration > 0 && <span>Lunch: {item.lunchDuration}m</span>}
                       </div>
 

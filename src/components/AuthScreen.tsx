@@ -160,7 +160,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
     <div className="min-h-screen bg-gray-100 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8" id="auth-screen">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Brand Icon */}
-        <div className="mx-auto h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+        <div className="mx-auto h-16 w-16 bg-[#1c0a00] border-2 border-orange-500 rounded-2xl flex items-center justify-center shadow-lg">
           <Clock className="w-9 h-9 text-white" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold tracking-tight text-gray-900 font-sans">
@@ -216,7 +216,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                     onChange={(e) => setName(e.target.value)}
                     required
                     placeholder="e.g. John Doe"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                     id="signup-name-input"
                   />
                 </div>
@@ -237,7 +237,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="worker@agency.com"
-                  className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                   id="auth-email-input"
                 />
               </div>
@@ -257,7 +257,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                   id="auth-password-input"
                 />
               </div>
@@ -274,7 +274,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                     onClick={() => setRole('employee')}
                     className={`py-2 px-3 text-xs font-medium border rounded-xl transition-all ${
                       role === 'employee'
-                        ? 'bg-blue-50 text-blue-700 border-blue-300 shadow-sm'
+                        ? 'bg-orange-50 text-orange-700 border-orange-300 shadow-sm'
                         : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
                     }`}
                     id="select-role-employee"
@@ -286,7 +286,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                     onClick={() => setRole('admin')}
                     className={`py-2 px-3 text-xs font-medium border rounded-xl transition-all ${
                       role === 'admin'
-                        ? 'bg-blue-50 text-blue-700 border-blue-300 shadow-sm'
+                        ? 'bg-orange-50 text-orange-700 border-orange-300 shadow-sm'
                         : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
                     }`}
                     id="select-role-admin"
@@ -313,7 +313,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 active:translate-y-px text-white py-2.5 px-4 rounded-xl text-sm font-semibold transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer disabled:opacity-55"
+              className="w-full bg-orange-600 hover:bg-orange-700 active:translate-y-px text-white py-2.5 px-4 rounded-xl text-sm font-semibold transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer disabled:opacity-55"
               id="auth-submit-btn"
             >
               {loading ? (
@@ -359,7 +359,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                 <button
                   type="button"
                   onClick={() => quickFill('employee')}
-                  className="flex-1 bg-white hover:bg-blue-50 text-[11px] font-semibold text-blue-600 py-1.5 px-2 rounded-lg border border-gray-200 hover:border-blue-200 flex items-center justify-center gap-1 transition-all"
+                  className="flex-1 bg-white hover:bg-orange-50 text-[11px] font-semibold text-orange-600 py-1.5 px-2 rounded-lg border border-gray-200 hover:border-orange-200 flex items-center justify-center gap-1 transition-all"
                   id="fill-demo-employee"
                 >
                   Demo Employee

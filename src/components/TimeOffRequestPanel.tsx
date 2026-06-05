@@ -108,13 +108,13 @@ export default function TimeOffRequestPanel({ user }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Plane className="w-5 h-5 text-blue-500" />
+          <Plane className="w-5 h-5 text-orange-500" />
           <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Time Off Requests</h2>
         </div>
         <button
           type="button"
           onClick={() => setShowForm(v => !v)}
-          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm active:translate-y-px transition-all cursor-pointer"
+          className="flex items-center gap-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm active:translate-y-px transition-all cursor-pointer"
         >
           {showForm ? <ChevronUp className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
           {showForm ? 'Cancel' : 'Request Time Off'}
@@ -125,10 +125,10 @@ export default function TimeOffRequestPanel({ user }: Props) {
       {showForm && (
         <form
           onSubmit={handleSubmit}
-          className="bg-white border-2 border-blue-200 rounded-2xl p-5 space-y-4 shadow-sm"
+          className="bg-white border-2 border-orange-200 rounded-2xl p-5 space-y-4 shadow-sm"
         >
           <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-blue-500" />
+            <Calendar className="w-4 h-4 text-orange-500" />
             New Time Off Request
           </h3>
 
@@ -147,7 +147,7 @@ export default function TimeOffRequestPanel({ user }: Props) {
                   setStartDate(e.target.value);
                   if (endDate && e.target.value > endDate) setEndDate(e.target.value);
                 }}
-                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 font-mono"
+                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-500 font-mono"
               />
             </div>
             <div>
@@ -160,13 +160,13 @@ export default function TimeOffRequestPanel({ user }: Props) {
                 min={startDate || today}
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 font-mono"
+                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-500 font-mono"
               />
             </div>
           </div>
 
           {startDate && endDate && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-xs text-blue-700 font-semibold flex items-center gap-2">
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-xs text-orange-700 font-semibold flex items-center gap-2">
               <Clock className="w-3.5 h-3.5 shrink-0" />
               {countDays(startDate, endDate)} day{countDays(startDate, endDate) !== 1 ? 's' : ''} &nbsp;·&nbsp;
               {countDays(startDate, endDate) * hoursPerDay} hours total
@@ -215,7 +215,7 @@ export default function TimeOffRequestPanel({ user }: Props) {
                 step="0.5"
                 value={hoursPerDay}
                 onChange={e => setHoursPerDay(Number(e.target.value) || 8)}
-                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 font-mono"
+                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-500 font-mono"
               />
             </div>
           </div>
@@ -231,14 +231,14 @@ export default function TimeOffRequestPanel({ user }: Props) {
               value={reason}
               onChange={e => setReason(e.target.value)}
               placeholder="Describe the reason for your time off request..."
-              className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 resize-none"
+              className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-500 resize-none"
             />
           </div>
 
           <button
             type="submit"
             disabled={!startDate || !endDate || !reason.trim() || submitting}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all shadow-sm"
+            className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all shadow-sm"
           >
             <Plane className="w-4 h-4" />
             {submitting ? 'Submitting...' : 'Submit Request'}

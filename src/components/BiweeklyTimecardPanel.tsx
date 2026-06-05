@@ -353,12 +353,12 @@ export default function BiweeklyTimecardPanel({
     if (mode === 'employee') {
       if (timecardDoc?.employeeSigned) {
         return (
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-2">
+          <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5 space-y-2">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-blue-600" />
-              <h3 className="text-sm font-bold text-blue-700">Your Signature Submitted</h3>
+              <CheckCircle2 className="w-5 h-5 text-orange-600" />
+              <h3 className="text-sm font-bold text-orange-700">Your Signature Submitted</h3>
             </div>
-            <p className="text-xs text-blue-600">
+            <p className="text-xs text-orange-600">
               Signed as <span className="font-mono font-bold">{timecardDoc.employeeSignatureName}</span> on {fmtTs(timecardDoc.employeeSignedAt)}.
             </p>
             <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
@@ -394,9 +394,9 @@ export default function BiweeklyTimecardPanel({
 
       // Ready to sign
       return (
-        <div className="bg-white border-2 border-blue-200 rounded-2xl p-5 space-y-4">
+        <div className="bg-white border-2 border-orange-200 rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2">
-            <PenLine className="w-5 h-5 text-blue-600" />
+            <PenLine className="w-5 h-5 text-orange-600" />
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Employee Sign-off</h3>
           </div>
           <p className="text-xs text-gray-500 leading-relaxed">
@@ -413,7 +413,7 @@ export default function BiweeklyTimecardPanel({
                 value={signName}
                 onChange={e => setSignName(e.target.value)}
                 placeholder="Type your full legal name..."
-                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-blue-500 font-medium placeholder-gray-400"
+                className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-500 font-medium placeholder-gray-400"
                 style={{ fontFamily: 'Georgia, serif' }}
               />
             </div>
@@ -421,7 +421,7 @@ export default function BiweeklyTimecardPanel({
               type="button"
               onClick={handleEmployeeSign}
               disabled={!signName.trim() || signing}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all shadow-sm"
+              className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer active:translate-y-px transition-all shadow-sm"
             >
               <PenLine className="w-4 h-4" />
               {signing ? 'Submitting...' : 'Sign & Confirm Timecard'}
@@ -519,7 +519,7 @@ export default function BiweeklyTimecardPanel({
             <select
               value={selectedEmpId}
               onChange={e => setSelectedEmpId(e.target.value)}
-              className="bg-white border border-gray-300 text-sm px-3 py-2 rounded-xl text-gray-900 focus:outline-none focus:border-blue-500 font-medium min-w-[200px]"
+              className="bg-white border border-gray-300 text-sm px-3 py-2 rounded-xl text-gray-900 focus:outline-none focus:border-orange-500 font-medium min-w-[200px]"
             >
               {registeredEmployees.map(emp => (
                 <option key={emp.uid} value={emp.uid}>{emp.name}</option>
@@ -540,12 +540,12 @@ export default function BiweeklyTimecardPanel({
           </button>
 
           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2 shadow-sm">
-            <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
+            <Calendar className="w-4 h-4 text-orange-500 shrink-0" />
             <span className="text-sm font-bold text-gray-800 whitespace-nowrap">
               {fmtDate(period.start)} – {fmtDate(period.end)}
             </span>
             {periodIdx === 0 && (
-              <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+              <span className="text-[10px] bg-orange-100 text-orange-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
                 Current
               </span>
             )}
@@ -572,8 +572,8 @@ export default function BiweeklyTimecardPanel({
               <div className="text-sm font-black text-white truncate">{targetName}</div>
             </div>
             <div>
-              <div className="text-[9px] uppercase text-blue-400 font-bold tracking-wide mb-0.5">Regular</div>
-              <div className="text-xl font-black text-blue-300 font-mono">{totals.worked.toFixed(2)}<span className="text-xs ml-0.5">h</span></div>
+              <div className="text-[9px] uppercase text-orange-400 font-bold tracking-wide mb-0.5">Regular</div>
+              <div className="text-xl font-black text-orange-300 font-mono">{totals.worked.toFixed(2)}<span className="text-xs ml-0.5">h</span></div>
             </div>
             <div>
               <div className="text-[9px] uppercase text-orange-400 font-bold tracking-wide mb-0.5">Overtime</div>
@@ -603,7 +603,7 @@ export default function BiweeklyTimecardPanel({
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
             <div className="text-[9px] uppercase font-bold tracking-wider text-gray-400 mb-1">Regular</div>
-            <div className="text-xl font-black text-blue-600 font-mono">{totals.worked.toFixed(2)}</div>
+            <div className="text-xl font-black text-orange-600 font-mono">{totals.worked.toFixed(2)}</div>
             <div className="text-[9px] text-gray-400 mt-0.5">hrs</div>
           </div>
           <div className={`rounded-xl p-3 text-center shadow-sm border ${totals.ot > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'}`}>
@@ -628,10 +628,10 @@ export default function BiweeklyTimecardPanel({
             <div className={`text-xl font-black font-mono ${totals.unpaid > 0 ? 'text-gray-600' : 'text-gray-300'}`}>{totals.unpaid.toFixed(2)}</div>
             <div className="text-[9px] text-gray-400 mt-0.5">hrs</div>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center shadow-sm">
-            <div className="text-[9px] uppercase font-bold tracking-wider text-blue-500 mb-1">Total</div>
-            <div className="text-xl font-black text-blue-700 font-mono">{grandTotal.toFixed(2)}</div>
-            <div className="text-[9px] text-blue-400 mt-0.5">hrs</div>
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center shadow-sm">
+            <div className="text-[9px] uppercase font-bold tracking-wider text-orange-500 mb-1">Total</div>
+            <div className="text-xl font-black text-orange-700 font-mono">{grandTotal.toFixed(2)}</div>
+            <div className="text-[9px] text-orange-400 mt-0.5">hrs</div>
           </div>
         </div>
       )}
@@ -640,7 +640,7 @@ export default function BiweeklyTimecardPanel({
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
-            <Clock className="w-4 h-4 text-blue-500" />
+            <Clock className="w-4 h-4 text-orange-500" />
             {mode === 'admin' ? `${targetName} — ` : ''}Pay Period Entries
           </h3>
           <span className="text-[11px] bg-gray-100 text-gray-500 font-bold px-2.5 py-1 rounded-full">
@@ -720,7 +720,7 @@ export default function BiweeklyTimecardPanel({
                       <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate" title={entry.jobName}>
                         {toff ? (
                           <span className="flex items-center gap-1.5">
-                            <Plane className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+                            <Plane className="w-3.5 h-3.5 shrink-0 text-orange-500" />
                             {entry.jobName}
                           </span>
                         ) : entry.jobName}
@@ -739,7 +739,7 @@ export default function BiweeklyTimecardPanel({
                         {toff ? (
                           <span className="text-gray-300">—</span>
                         ) : (
-                          <span className="text-blue-600">{t.worked.toFixed(2)}h</span>
+                          <span className="text-orange-600">{t.worked.toFixed(2)}h</span>
                         )}
                       </td>
                       {/* OT */}
@@ -818,7 +818,7 @@ export default function BiweeklyTimecardPanel({
                   <td className="px-4 py-3 font-black text-gray-700 uppercase tracking-wide text-[10px]" colSpan={5}>
                     Period Totals
                   </td>
-                  <td className="px-4 py-3 text-right font-black text-blue-700 font-mono whitespace-nowrap">
+                  <td className="px-4 py-3 text-right font-black text-orange-700 font-mono whitespace-nowrap">
                     {totals.worked.toFixed(2)}h
                   </td>
                   <td className={`px-4 py-3 text-right font-black font-mono whitespace-nowrap ${totals.ot > 0 ? 'text-orange-600' : 'text-gray-300'}`}>

@@ -92,7 +92,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center font-sans">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center animate-spin shadow-lg">
+          <div className="w-14 h-14 bg-orange-600 rounded-2xl flex items-center justify-center animate-spin shadow-lg">
             <Clock className="w-8 h-8 text-white" />
           </div>
           <div className="text-center space-y-1">
@@ -110,16 +110,16 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 flex flex-col font-sans selection:bg-blue-200 selection:text-blue-900">
+    <div className="min-h-screen bg-gray-100 text-gray-900 flex flex-col font-sans selection:bg-orange-200 selection:text-blue-900">
 
       {/* Dev warning Banner if Firestore lookup fails */}
       {errorBoundary && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5 flex items-center justify-between gap-4 text-xs font-medium text-blue-800" id="error-boundary-banner">
+        <div className="bg-orange-50 border-b border-orange-200 px-4 py-2.5 flex items-center justify-between gap-4 text-xs font-medium text-blue-800" id="error-boundary-banner">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-blue-600 shrink-0" />
+            <ShieldAlert className="w-4 h-4 text-orange-600 shrink-0" />
             <span>{errorBoundary}</span>
           </div>
-          <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">
+          <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded uppercase">
             Preview Active
           </span>
         </div>
@@ -127,14 +127,14 @@ export default function App() {
 
       {/* Admin view toggle — only visible to admin accounts */}
       {profile.role === 'admin' && (
-        <div className="bg-slate-900 border-b border-slate-700 px-4 py-2 flex items-center justify-center gap-1">
+        <div className="bg-[#1c0a00] border-b border-[#3d1f00] px-4 py-2 flex items-center justify-center gap-1">
           <button
             type="button"
             onClick={() => setAdminViewMode('employee')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               adminViewMode === 'employee'
-                ? 'bg-blue-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                ? 'bg-orange-600 text-white shadow'
+                : 'text-orange-200 hover:text-white hover:bg-[#3d1f00]'
             }`}
           >
             <HardHat className="w-3.5 h-3.5" />
@@ -145,8 +145,8 @@ export default function App() {
             onClick={() => setAdminViewMode('admin')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               adminViewMode === 'admin'
-                ? 'bg-slate-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                ? 'bg-orange-700 text-white shadow'
+                : 'text-orange-200 hover:text-white hover:bg-[#3d1f00]'
             }`}
           >
             <Shield className="w-3.5 h-3.5" />

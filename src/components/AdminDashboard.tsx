@@ -608,7 +608,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     const events: { label: string; icon: React.ReactNode; coords: { latitude: number; longitude: number } | null }[] = [
       { label: 'Clock In', icon: <MapPin className="w-3.5 h-3.5 text-green-600" />, coords: entry.clockInCoords || null },
       ...(entry.lunchStart ? [{ label: 'Lunch Start', icon: <Coffee className="w-3.5 h-3.5 text-orange-500" />, coords: entry.lunchStartCoords || null }] : []),
-      ...(entry.lunchEnd ? [{ label: 'Lunch End', icon: <Coffee className="w-3.5 h-3.5 text-blue-500" />, coords: entry.lunchEndCoords || null }] : []),
+      ...(entry.lunchEnd ? [{ label: 'Lunch End', icon: <Coffee className="w-3.5 h-3.5 text-orange-500" />, coords: entry.lunchEndCoords || null }] : []),
       ...(entry.clockOutTime ? [{ label: 'Clock Out', icon: <Navigation className="w-3.5 h-3.5 text-red-500" />, coords: entry.clockOutCoords || null }] : []),
     ];
 
@@ -616,11 +616,11 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     const primaryCoords = events.find(ev => ev.coords)?.coords || null;
 
     return (
-      <div className="bg-blue-50 border-t border-blue-100 px-4 py-4">
+      <div className="bg-orange-50 border-t border-blue-100 px-4 py-4">
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Embedded map */}
           {primaryCoords && (
-            <div className="shrink-0 rounded-xl overflow-hidden border border-blue-200 shadow-sm" style={{ width: 260, height: 180 }}>
+            <div className="shrink-0 rounded-xl overflow-hidden border border-orange-200 shadow-sm" style={{ width: 260, height: 180 }}>
               <iframe
                 title={`Location map for ${entry.employeeName}`}
                 src={osmEmbedUrl(primaryCoords.latitude, primaryCoords.longitude)}
@@ -634,7 +634,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
           {/* Location event stamps */}
           <div className="flex-1 space-y-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1">Location History</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-orange-600 mb-1">Location History</p>
             {events.map((ev, i) => (
               <div key={i} className="flex items-center justify-between bg-white border border-blue-100 rounded-lg px-3 py-2 text-xs shadow-sm">
                 <div className="flex items-center gap-2">
@@ -653,7 +653,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     href={gMapsUrl(ev.coords.latitude, ev.coords.longitude)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-semibold shrink-0"
+                    className="flex items-center gap-1 text-orange-600 hover:text-blue-800 font-semibold shrink-0"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     Maps
@@ -775,7 +775,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
               {jobs.map(j => j.name).join(', ') || 'No locations recorded.'}
             </div>
           </div>
-          <Briefcase className="w-10 h-10 text-blue-400 opacity-60" />
+          <Briefcase className="w-10 h-10 text-orange-400 opacity-60" />
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex items-center justify-between">
@@ -822,7 +822,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                 type="time"
                 value={autoLogout}
                 onChange={(e) => setAutoLogout(e.target.value)}
-                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-blue-500"
+                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-orange-500"
               />
               <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
                 Workers left clocked in beyond this time will be clipped to this capping limit dynamically.
@@ -839,7 +839,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                 max="240"
                 value={companyTravelCoverage}
                 onChange={(e) => setCompanyTravelCoverage(Number(e.target.value) || 0)}
-                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-blue-500"
+                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-orange-500"
               />
               <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
                 Company pays this many travel minutes per shift. Travel beyond this is on the employee.
@@ -849,7 +849,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
             <button
               type="button"
               onClick={handleSaveSettings}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-[10px] font-bold text-white uppercase px-3 py-2 rounded-lg active:translate-y-px cursor-pointer transition-all"
+              className="w-full bg-orange-600 hover:bg-orange-700 text-[10px] font-bold text-white uppercase px-3 py-2 rounded-lg active:translate-y-px cursor-pointer transition-all"
             >
               Save Settings
             </button>
@@ -876,7 +876,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     placeholder="John"
                     value={preRegFirstName}
                     onChange={e => setPreRegFirstName(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
@@ -887,7 +887,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     placeholder="Doe"
                     value={preRegLastName}
                     onChange={e => setPreRegLastName(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
@@ -901,7 +901,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   placeholder="worker@company.com"
                   value={preRegEmail}
                   onChange={e => setPreRegEmail(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -913,7 +913,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   placeholder="(555) 000-0000"
                   value={preRegPhone}
                   onChange={e => setPreRegPhone(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -925,7 +925,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   placeholder="e.g. Field Technician"
                   value={preRegJobTitle}
                   onChange={e => setPreRegJobTitle(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -939,7 +939,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   placeholder="0.00"
                   value={preRegRate}
                   onChange={e => setPreRegRate(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -951,7 +951,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   placeholder="123 Main St, City, State"
                   value={preRegAddress}
                   onChange={e => setPreRegAddress(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -982,7 +982,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
               </div>
               <p className="text-[9px] text-gray-400 leading-tight">
                 GPS coordinates used for auto travel-time calculation.{' '}
-                <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-orange-500 underline">
                   Find on Google Maps
                 </a>
               </p>
@@ -996,7 +996,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     onClick={() => setPreRegRole('employee')}
                     className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
                       preRegRole === 'employee'
-                        ? 'bg-blue-50 text-blue-700 border-blue-300'
+                        ? 'bg-orange-50 text-orange-700 border-orange-300'
                         : 'bg-white text-gray-400 border-gray-200 hover:text-gray-600'
                     }`}
                   >
@@ -1019,7 +1019,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
               <button
                 type="submit"
                 disabled={preRegLoading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-xs text-white font-bold py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer active:translate-y-px shadow-sm"
+                className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-xs text-white font-bold py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer active:translate-y-px shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
                 {preRegLoading ? 'Creating...' : 'Create Employee Profile'}
@@ -1086,7 +1086,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   placeholder="e.g. Sola Airfield Retro"
                   value={newJobName}
                   onChange={(e) => setNewJobName(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
                   id="new-job-title"
                 />
               </div>
@@ -1099,7 +1099,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   placeholder="Street and City coordinates"
                   value={newJobAddress}
                   onChange={(e) => setNewJobAddress(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
                   id="new-job-address"
                 />
               </div>
@@ -1119,7 +1119,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                         () => alert('Could not retrieve your location. Enter coordinates manually.')
                       );
                     }}
-                    className="text-[10px] text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
+                    className="text-[10px] text-orange-600 hover:text-orange-700 font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <MapPin className="w-3 h-3" />
                     Use My Location
@@ -1214,13 +1214,13 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
           {/* Time Off Requests — pending review */}
           {timeOffRequests.some(r => r.status === 'pending') && (
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="bg-orange-50 border-2 border-orange-200 rounded-2xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between gap-4 flex-wrap">
-                <h2 className="text-base font-black text-blue-700 flex items-center gap-2 uppercase tracking-wide">
-                  <Plane className="w-5 h-5 text-blue-600 shrink-0" />
+                <h2 className="text-base font-black text-orange-700 flex items-center gap-2 uppercase tracking-wide">
+                  <Plane className="w-5 h-5 text-orange-600 shrink-0" />
                   Time Off Requests — Pending Approval
                 </h2>
-                <span className="text-xs font-bold bg-blue-200 text-blue-800 px-3 py-1 rounded-full">
+                <span className="text-xs font-bold bg-orange-200 text-blue-800 px-3 py-1 rounded-full">
                   {timeOffRequests.filter(r => r.status === 'pending').length} pending
                 </span>
               </div>
@@ -1236,7 +1236,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   const note = denyNotes[req.id] || '';
 
                   return (
-                    <div key={req.id} className="bg-white border border-blue-200 rounded-xl p-4 space-y-3 text-xs shadow-sm flex flex-col justify-between">
+                    <div key={req.id} className="bg-white border border-orange-200 rounded-xl p-4 space-y-3 text-xs shadow-sm flex flex-col justify-between">
                       <div className="space-y-2">
                         {/* Header */}
                         <div className="flex justify-between items-start gap-2">
@@ -1252,7 +1252,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
                         {/* Dates */}
                         <div className="flex items-center gap-1.5 text-gray-700 font-semibold">
-                          <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <Calendar className="w-3.5 h-3.5 text-orange-500 shrink-0" />
                           {fmtDate(req.startDate)}{req.startDate !== req.endDate && ` – ${fmtDate(req.endDate)}`}
                         </div>
 
@@ -1277,7 +1277,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                             value={note}
                             onChange={e => setDenyNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
                             placeholder="Reason for denial..."
-                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-blue-400"
+                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-orange-400"
                           />
                         </div>
                       </div>
@@ -1338,7 +1338,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   const gpsEvents = [
                     { label: 'Clock In',    icon: <MapPin className="w-3 h-3 text-green-600" />,   coords: item.clockInCoords  || null },
                     ...(item.lunchStart ? [{ label: 'Lunch Start', icon: <Coffee className="w-3 h-3 text-orange-500" />, coords: item.lunchStartCoords || null }] : []),
-                    ...(item.lunchEnd   ? [{ label: 'Lunch End',   icon: <Coffee className="w-3 h-3 text-blue-500" />,   coords: item.lunchEndCoords   || null }] : []),
+                    ...(item.lunchEnd   ? [{ label: 'Lunch End',   icon: <Coffee className="w-3 h-3 text-orange-500" />,   coords: item.lunchEndCoords   || null }] : []),
                     ...(item.clockOutTime ? [{ label: 'Clock Out', icon: <Navigation className="w-3 h-3 text-red-500" />, coords: item.clockOutCoords || null }] : []),
                   ];
                   const anyOffSite = gpsEvents.some(ev => isOffSite(ev.coords));
@@ -1355,7 +1355,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
                               isManual
                                 ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-orange-50 text-orange-700 border-orange-200'
                             }`}>
                               {isManual ? 'Manual Entry' : 'GPS Verified'}
                             </span>
@@ -1378,7 +1378,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                           <div className="col-span-2">Job: <span className="text-gray-800 font-bold">{item.jobName}</span></div>
                           <div>Cost: <span className="text-gray-700">{item.costCode.split(' ')[0]}</span></div>
                           <div>Clock-in: <span className="text-gray-700">{item.clockInTime?.seconds ? new Date(item.clockInTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span></div>
-                          <div>Regular: <span className="text-blue-600 font-extrabold">{data.worked.toFixed(2)} hrs</span></div>
+                          <div>Regular: <span className="text-orange-600 font-extrabold">{data.worked.toFixed(2)} hrs</span></div>
                           {(item.travelTimeIn + item.travelTimeOut) > 0 && (
                             <div>Travel: <span className="text-gray-500">{item.travelTimeIn + item.travelTimeOut}m</span></div>
                           )}
@@ -1419,7 +1419,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                                   href={gMapsUrl(ev.coords.latitude, ev.coords.longitude)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 font-semibold shrink-0 ml-2"
+                                  className="text-orange-600 hover:text-blue-800 flex items-center gap-0.5 font-semibold shrink-0 ml-2"
                                 >
                                   <ExternalLink className="w-3 h-3" />
                                   Map
@@ -1498,7 +1498,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                       <select
                         value={filterEmployee}
                         onChange={e => setFilterEmployee(e.target.value)}
-                        className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                        className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                         id="filter-worker-name-input"
                       >
                         <option value="">All Employees</option>
@@ -1513,7 +1513,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   <select
                     value={filterJob}
                     onChange={e => setFilterJob(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                     id="filter-job-select"
                   >
                     <option value="">All Sites</option>
@@ -1526,7 +1526,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   <select
                     value={filterCostCode}
                     onChange={e => setFilterCostCode(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                     id="filter-costcode-select"
                   >
                     <option value="">All Codes</option>
@@ -1547,7 +1547,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                         onClick={() => setFilterDateMode(mode)}
                         className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
                           filterDateMode === mode
-                            ? 'bg-blue-600 text-white shadow-sm'
+                            ? 'bg-orange-600 text-white shadow-sm'
                             : 'text-gray-500 hover:text-gray-700'
                         }`}
                       >
@@ -1562,7 +1562,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     type="date"
                     value={filterDate}
                     onChange={e => setFilterDate(e.target.value)}
-                    className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-blue-500"
+                    className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-orange-500"
                     id="filter-shift-day"
                   />
                 )}
@@ -1571,7 +1571,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   <select
                     value={filterPeriodIdx}
                     onChange={e => setFilterPeriodIdx(Number(e.target.value))}
-                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
                   >
                     {payPeriods.map((p, i) => (
                       <option key={p.start} value={i}>{p.label}</option>
@@ -1587,7 +1587,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                         type="date"
                         value={filterDateFrom}
                         onChange={e => setFilterDateFrom(e.target.value)}
-                        className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-blue-500"
+                        className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-orange-500"
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -1596,7 +1596,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                         type="date"
                         value={filterDateTo}
                         onChange={e => setFilterDateTo(e.target.value)}
-                        className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-blue-500"
+                        className="bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none font-mono focus:border-orange-500"
                       />
                     </div>
                   </div>
@@ -1612,7 +1612,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                       setFilterEmployee(''); setFilterJob(''); setFilterCostCode('');
                       setFilterDate(''); setFilterDateFrom(''); setFilterDateTo('');
                     }}
-                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+                    className="text-[10px] text-orange-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <XSquare className="w-3 h-3" /> Clear All Filters
                   </button>
@@ -1634,7 +1634,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     Object.entries(statsByJob).map(([job, h]: any) => (
                       <div key={job} className="flex justify-between font-mono">
                         <span className="text-gray-500 truncate max-w-[130px]">{job}</span>
-                        <span className="text-blue-600 font-bold">{h.toFixed(1)} hrs</span>
+                        <span className="text-orange-600 font-bold">{h.toFixed(1)} hrs</span>
                       </div>
                     ))
                   )}
@@ -1653,7 +1653,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     Object.entries(statsByCode).map(([code, h]: any) => (
                       <div key={code} className="flex justify-between font-mono">
                         <span className="text-gray-500 truncate max-w-[130px]">{code}</span>
-                        <span className="text-blue-500 font-bold">{h.toFixed(1)} hrs</span>
+                        <span className="text-orange-500 font-bold">{h.toFixed(1)} hrs</span>
                       </div>
                     ))
                   )}
@@ -1709,7 +1709,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                       const hasCoords = e.clockInCoords || e.clockOutCoords;
                       return (
                         <React.Fragment key={e.id}>
-                          <tr className={`hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-blue-50/40' : ''}`}>
+                          <tr className={`hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-orange-50/40' : ''}`}>
                             <td className="px-4 py-4 whitespace-nowrap font-bold text-gray-800">
                               {e.employeeName}
                             </td>
@@ -1724,7 +1724,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">
                               {e.status === 'active' ? (
-                                <span className="inline-flex items-center gap-1 font-bold text-[10px] uppercase bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded-full animate-pulse">
+                                <span className="inline-flex items-center gap-1 font-bold text-[10px] uppercase bg-orange-50 border border-orange-200 text-orange-700 px-2 py-0.5 rounded-full animate-pulse">
                                   ● Clocked In
                                 </span>
                               ) : e.isApproved ? (
@@ -1758,9 +1758,9 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                                 title={hasCoords ? 'View location history' : 'No GPS data'}
                                 className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                                   isExpanded
-                                    ? 'bg-blue-100 text-blue-700'
+                                    ? 'bg-orange-100 text-orange-700'
                                     : hasCoords
-                                      ? 'text-gray-400 hover:bg-blue-50 hover:text-blue-600'
+                                      ? 'text-gray-400 hover:bg-orange-50 hover:text-orange-600'
                                       : 'text-gray-200 cursor-not-allowed'
                                 }`}
                               >
