@@ -32,9 +32,11 @@ export default function App() {
 
         const unsubscribeProfile = onSnapshot(userDocRef, (docSnapshot) => {
           if (docSnapshot.exists()) {
-            const data = docSnapshot.data() as UserProfile;
+            const rawData = docSnapshot.data() as UserProfile;
             // Bootstrapped admin email always gets admin role regardless of stored value
-            if (data.email?.toLowerCase() === 'kenneytyler14@gmail.com') data.role = 'admin';
+            const data = rawData.email?.toLowerCase() === 'kenneytyler14@gmail.com'
+              ? { ...rawData, role: 'admin' as const }
+              : rawData;
             setProfile(data);
           } else {
             console.warn("User profile does not exist in Firestore users collection yet. Initializing default.");
