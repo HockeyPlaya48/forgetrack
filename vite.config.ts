@@ -38,7 +38,20 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          // Exclude HTML from precache — index.html must always come from the network
+          // so users pick up new JS/CSS bundle references immediately.
+          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+          runtimeCaching: [
+            {
+              // Network-first for HTML pages so the entry point is never stale
+              urlPattern: ({ request }) => request.destination === 'document',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'pages-cache',
+                networkTimeoutSeconds: 5,
+              },
+            },
+          ],
           cleanupOutdatedCaches: true,
           skipWaiting: true,
           clientsClaim: true,
