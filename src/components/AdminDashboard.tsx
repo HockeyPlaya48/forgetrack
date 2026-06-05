@@ -577,7 +577,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `HourGlass_Billing_Invoice_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `ForgeTrack_Billing_Invoice_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -688,7 +688,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">
-              HourGlass Control Console
+              ForgeTrack Control Console
             </h1>
             <p className="text-xs text-slate-300 uppercase tracking-widest">
               Role: Master System Administrator / Manager

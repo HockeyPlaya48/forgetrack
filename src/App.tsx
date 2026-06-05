@@ -97,7 +97,7 @@ export default function App() {
           </div>
           <div className="text-center space-y-1">
             <h3 className="text-base font-bold tracking-wide text-gray-800">Syncing Security Credentials...</h3>
-            <p className="text-xs text-gray-500">Contacting HourGlass Authentication Servers</p>
+            <p className="text-xs text-gray-500">Contacting ForgeTrack Authentication Servers</p>
           </div>
         </div>
       </div>
@@ -166,7 +166,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white py-5 text-center text-[11px] text-gray-400 tracking-wider uppercase font-mono">
-        <p>© 2026 HourGlass — Secure, Offline-First Field Operations Workspace.</p>
+        <p>© 2026 ForgeTrack — Secure, Offline-First Field Operations Workspace.</p>
       </footer>
     </div>
   );

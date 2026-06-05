@@ -322,7 +322,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
         const clockInDate = new Date((active as TimeEntry).clockInTime?.seconds * 1000 || Date.now());
         const curDate = new Date();
 
-        const isPastLimit = curDate.getHours() >= autoLogoutHour;
+        // Only auto-logout if the session started before the cutoff hour (not sessions that begin after it)
+        const isPastLimit = curDate.getHours() >= autoLogoutHour && clockInDate.getHours() < autoLogoutHour;
         const isDifferentDay = curDate.getDate() !== clockInDate.getDate() || curDate.getMonth() !== clockInDate.getMonth();
 
         if (isPastLimit || isDifferentDay) {

@@ -164,7 +164,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
           <Clock className="w-9 h-9 text-white" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold tracking-tight text-gray-900 font-sans">
-          HourGlass
+          ForgeTrack
         </h2>
         <p className="mt-1.5 text-center text-sm text-gray-500">
           Field Operations Time & GPS Tracking Portal
