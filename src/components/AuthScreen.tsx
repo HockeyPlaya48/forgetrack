@@ -68,9 +68,15 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
       } else {
         // Sign In Flow
         const userCred = await signInWithEmailAndPassword(auth, email, password);
-        // Bootstrap admin: patch Firestore role to 'admin' if it was ever mis-written as 'employee'
+        // Bootstrap admin: ensure a full user document exists with role: 'admin'
         if (email.toLowerCase().trim() === 'kenneytyler14@gmail.com') {
-          await setDoc(doc(db, 'users', userCred.user.uid), { role: 'admin' }, { merge: true });
+          await setDoc(doc(db, 'users', userCred.user.uid), {
+            uid: userCred.user.uid,
+            email: email.toLowerCase().trim(),
+            name: userCred.user.displayName || name || 'Admin',
+            role: 'admin',
+            createdAt: new Date(),
+          }, { merge: true });
         }
         onSuccess(userCred.user.uid);
       }
