@@ -801,416 +801,8 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
         </div>
       </div>
 
-      {/* Main Core Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-
-        {/* Right Sidebar: Admin Tools */}
-        <div className="space-y-6 lg:col-span-1 lg:order-2">
-
-          {/* Settings Section */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="settings-card">
-            <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
-              <Settings className="w-4 h-4 text-gray-400" />
-              Operational Parameters
-            </h3>
-
-            <div>
-              <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">
-                Daily Company Auto-Clockout Hour
-              </label>
-              <input
-                type="time"
-                value={autoLogout}
-                onChange={(e) => setAutoLogout(e.target.value)}
-                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-orange-500"
-              />
-              <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
-                Workers left clocked in beyond this time will be clipped to this capping limit dynamically.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">
-                Company Travel Coverage (Minutes)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="240"
-                value={companyTravelCoverage}
-                onChange={(e) => setCompanyTravelCoverage(Number(e.target.value) || 0)}
-                className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-orange-500"
-              />
-              <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
-                Company pays this many travel minutes per shift. Travel beyond this is on the employee.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSaveSettings}
-              className="w-full bg-orange-600 hover:bg-orange-700 text-[10px] font-bold text-white uppercase px-3 py-2 rounded-lg active:translate-y-px cursor-pointer transition-all"
-            >
-              Save Settings
-            </button>
-          </div>
-
-          {/* Add Employee Card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
-            <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
-              <Users className="w-4 h-4 text-gray-400" />
-              Add Employee
-            </h3>
-            <p className="text-[10px] text-gray-400 leading-tight -mt-1">
-              Create a profile. Employee signs in with this email to claim it.
-            </p>
-
-            <form onSubmit={handlePreRegisterEmployee} className="space-y-3">
-              {/* Name row */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-1">First Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="John"
-                    value={preRegFirstName}
-                    onChange={e => setPreRegFirstName(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-1">Last Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Doe"
-                    value={preRegLastName}
-                    onChange={e => setPreRegLastName(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Email Address *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="worker@company.com"
-                  value={preRegEmail}
-                  onChange={e => setPreRegEmail(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              {/* Phone */}
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Phone Number</label>
-                <input
-                  type="tel"
-                  placeholder="(555) 000-0000"
-                  value={preRegPhone}
-                  onChange={e => setPreRegPhone(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              {/* Job Title */}
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Job Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Field Technician"
-                  value={preRegJobTitle}
-                  onChange={e => setPreRegJobTitle(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              {/* Billable Rate */}
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Billable Rate ($/hr)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={preRegRate}
-                  onChange={e => setPreRegRate(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              {/* Address */}
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Home Address</label>
-                <input
-                  type="text"
-                  placeholder="123 Main St, City, State"
-                  value={preRegAddress}
-                  onChange={e => setPreRegAddress(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              {/* GPS Coords for travel calc */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-1">Latitude <span className="text-gray-300">(GPS)</span></label>
-                  <input
-                    type="number"
-                    step="0.000001"
-                    placeholder="37.7749"
-                    value={preRegLat}
-                    onChange={e => setPreRegLat(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-1">Longitude <span className="text-gray-300">(GPS)</span></label>
-                  <input
-                    type="number"
-                    step="0.000001"
-                    placeholder="-122.4194"
-                    value={preRegLng}
-                    onChange={e => setPreRegLng(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none"
-                  />
-                </div>
-              </div>
-              <p className="text-[9px] text-gray-400 leading-tight">
-                GPS coordinates used for auto travel-time calculation.{' '}
-                <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-orange-500 underline">
-                  Find on Google Maps
-                </a>
-              </p>
-
-              {/* Role toggle */}
-              <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Access Level</label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPreRegRole('employee')}
-                    className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
-                      preRegRole === 'employee'
-                        ? 'bg-orange-50 text-orange-700 border-orange-300'
-                        : 'bg-white text-gray-400 border-gray-200 hover:text-gray-600'
-                    }`}
-                  >
-                    Employee
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreRegRole('admin')}
-                    className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
-                      preRegRole === 'admin'
-                        ? 'bg-amber-50 text-amber-700 border-amber-300'
-                        : 'bg-white text-gray-400 border-gray-200 hover:text-gray-600'
-                    }`}
-                  >
-                    Admin
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={preRegLoading}
-                className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-xs text-white font-bold py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer active:translate-y-px shadow-sm"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {preRegLoading ? 'Creating...' : 'Create Employee Profile'}
-              </button>
-            </form>
-          </div>
-
-          {/* Pending Registrations list */}
-          {pendingEmployees.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
-              <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  Pending Invites
-                </span>
-                <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500">
-                  {pendingEmployees.filter(p => !p.claimed).length} unclaimed
-                </span>
-              </h3>
-              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {pendingEmployees.map(p => (
-                  <div key={p.email} className={`rounded-xl border px-3 py-2 text-xs flex items-start justify-between gap-2 ${p.claimed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="font-bold text-gray-800 truncate">{p.name}</div>
-                      <div className="text-[10px] text-gray-500 truncate">{p.email}</div>
-                      {p.jobTitle && <div className="text-[10px] text-gray-400">{p.jobTitle}</div>}
-                      <span className={`inline-block text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
-                        p.claimed
-                          ? 'bg-green-100 border-green-200 text-green-700'
-                          : 'bg-amber-50 border-amber-200 text-amber-700'
-                      }`}>
-                        {p.claimed ? 'Claimed' : 'Pending'}
-                      </span>
-                    </div>
-                    {!p.claimed && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePendingEmployee(p.email)}
-                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg shrink-0 transition-all cursor-pointer"
-                        title="Remove invite"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Job Sites Creation Card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="jobs-creator-card">
-            <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-gray-400" />
-              Register Site Location
-            </h3>
-
-            <form onSubmit={handleCreateJob} className="space-y-3">
-              <div>
-                <label className="block text-[10.5px] text-gray-500 mb-1">Site / Project Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Sola Airfield Retro"
-                  value={newJobName}
-                  onChange={(e) => setNewJobName(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
-                  id="new-job-title"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10.5px] text-gray-500 mb-1">Physical Address</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Street and City coordinates"
-                  value={newJobAddress}
-                  onChange={(e) => setNewJobAddress(e.target.value)}
-                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
-                  id="new-job-address"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10.5px] text-gray-500">GPS Coordinates</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!navigator.geolocation) return;
-                      navigator.geolocation.getCurrentPosition(
-                        (pos) => {
-                          setNewJobLat(pos.coords.latitude);
-                          setNewJobLng(pos.coords.longitude);
-                        },
-                        () => alert('Could not retrieve your location. Enter coordinates manually.')
-                      );
-                    }}
-                    className="text-[10px] text-orange-600 hover:text-orange-700 font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <MapPin className="w-3 h-3" />
-                    Use My Location
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <label className="block text-gray-500 mb-1">Latitude</label>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      required
-                      value={newJobLat}
-                      onChange={(e) => setNewJobLat(Number(e.target.value))}
-                      className="w-full bg-white border border-gray-300 p-1.5 rounded-lg text-gray-900 font-mono focus:outline-none"
-                      id="new-job-lat"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Longitude</label>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      required
-                      value={newJobLng}
-                      onChange={(e) => setNewJobLng(Number(e.target.value))}
-                      className="w-full bg-white border border-gray-300 p-1.5 rounded-lg text-gray-900 font-mono focus:outline-none"
-                      id="new-job-lng"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10.5px] text-gray-500 mb-1">Proximity Bounds (Meters) <span className="text-gray-400">— 1 mile = 1609m</span></label>
-                <input
-                  type="number"
-                  min="100"
-                  max="16090"
-                  value={newJobRadius}
-                  onChange={(e) => setNewJobRadius(Number(e.target.value) || 1609)}
-                  className="w-full bg-white border border-gray-300 text-xs p-1.5 rounded-lg text-gray-900 font-mono focus:outline-none"
-                  id="new-job-radius"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-green-600 hover:bg-green-700 active:translate-y-px text-xs text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
-                id="sumbit-new-job-btn"
-              >
-                <Plus className="w-4 h-4" />
-                Register Site
-              </button>
-            </form>
-          </div>
-
-          {/* Job Sites List Manager */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3" id="jobs-list-panel">
-            <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-1.5 border-b border-gray-100 flex items-center justify-between">
-              <span>Managed Locations</span>
-              <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500">{jobs.length} sites</span>
-            </h3>
-
-            <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
-              {jobs.map((j) => (
-                <div key={j.id} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex justify-between items-start gap-4 text-xs">
-                  <div className="space-y-0.5 min-w-0">
-                    <div className="font-bold text-gray-800 truncate" title={j.name}>{j.name}</div>
-                    <div className="text-[10px] text-gray-500 truncate" title={j.address}>{j.address}</div>
-                    <span className="text-[8.5px] font-mono text-gray-400 block">
-                      Coords: {j.latitude?.toFixed(4)}, {j.longitude?.toFixed(4)} (±{j.radius}m)
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteJob(j.id)}
-                    className="text-red-500 hover:bg-red-50 p-1 rounded-lg shrink-0 transition-all cursor-pointer"
-                    title="Remove Job"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Main Reporting Area */}
-        <div className="space-y-6 lg:col-span-3 lg:order-1">
+      {/* Main Reporting Area — full width */}
+      <div className="space-y-6">
 
           {/* Time Off Requests — pending review */}
           {timeOffRequests.some(r => r.status === 'pending') && (
@@ -1785,9 +1377,298 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
           </div>
 
+      </div>{/* end main reporting area */}
+
+      {/* Bottom Admin Tools — Register Site, Add Employee, Pending Invites, Operational Parameters */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        {/* 1. Register Site Location + Managed Locations */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="jobs-creator-card">
+          <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-gray-400" />
+            Register Site Location
+          </h3>
+
+          <form onSubmit={handleCreateJob} className="space-y-3">
+            <div>
+              <label className="block text-[10.5px] text-gray-500 mb-1">Site / Project Title</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Sola Airfield Retro"
+                value={newJobName}
+                onChange={(e) => setNewJobName(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
+                id="new-job-title"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10.5px] text-gray-500 mb-1">Physical Address</label>
+              <input
+                type="text"
+                required
+                placeholder="Street and City coordinates"
+                value={newJobAddress}
+                onChange={(e) => setNewJobAddress(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
+                id="new-job-address"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] text-gray-500">GPS Coordinates</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!navigator.geolocation) return;
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        setNewJobLat(pos.coords.latitude);
+                        setNewJobLng(pos.coords.longitude);
+                      },
+                      () => alert('Could not retrieve your location. Enter coordinates manually.')
+                    );
+                  }}
+                  className="text-[10px] text-orange-600 hover:text-orange-700 font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <MapPin className="w-3 h-3" />
+                  Use My Location
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <div>
+                  <label className="block text-gray-500 mb-1">Latitude</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    required
+                    value={newJobLat}
+                    onChange={(e) => setNewJobLat(Number(e.target.value))}
+                    className="w-full bg-white border border-gray-300 p-1.5 rounded-lg text-gray-900 font-mono focus:outline-none"
+                    id="new-job-lat"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-500 mb-1">Longitude</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    required
+                    value={newJobLng}
+                    onChange={(e) => setNewJobLng(Number(e.target.value))}
+                    className="w-full bg-white border border-gray-300 p-1.5 rounded-lg text-gray-900 font-mono focus:outline-none"
+                    id="new-job-lng"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10.5px] text-gray-500 mb-1">Proximity Bounds (Meters) <span className="text-gray-400">— 1 mile = 1609m</span></label>
+              <input
+                type="number"
+                min="100"
+                max="16090"
+                value={newJobRadius}
+                onChange={(e) => setNewJobRadius(Number(e.target.value) || 1609)}
+                className="w-full bg-white border border-gray-300 text-xs p-1.5 rounded-lg text-gray-900 font-mono focus:outline-none"
+                id="new-job-radius"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-green-600 hover:bg-green-700 active:translate-y-px text-xs text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
+              id="sumbit-new-job-btn"
+            >
+              <Plus className="w-4 h-4" />
+              Register Site
+            </button>
+          </form>
+
+          {/* Managed Locations list */}
+          <div className="border-t border-gray-100 pt-4 space-y-3" id="jobs-list-panel">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-600">Managed Locations</span>
+              <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500">{jobs.length} sites</span>
+            </div>
+            <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+              {jobs.map((j) => (
+                <div key={j.id} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex justify-between items-start gap-4 text-xs">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="font-bold text-gray-800 truncate" title={j.name}>{j.name}</div>
+                    <div className="text-[10px] text-gray-500 truncate" title={j.address}>{j.address}</div>
+                    <span className="text-[8.5px] font-mono text-gray-400 block">
+                      Coords: {j.latitude?.toFixed(4)}, {j.longitude?.toFixed(4)} (±{j.radius}m)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteJob(j.id)}
+                    className="text-red-500 hover:bg-red-50 p-1 rounded-lg shrink-0 transition-all cursor-pointer"
+                    title="Remove Job"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
-      </div>
+        {/* 2. Add Employee */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
+            <Users className="w-4 h-4 text-gray-400" />
+            Add Employee
+          </h3>
+          <p className="text-[10px] text-gray-400 leading-tight -mt-1">
+            Create a profile. Employee signs in with this email to claim it.
+          </p>
+
+          <form onSubmit={handlePreRegisterEmployee} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">First Name *</label>
+                <input type="text" required placeholder="John" value={preRegFirstName} onChange={e => setPreRegFirstName(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Last Name *</label>
+                <input type="text" required placeholder="Doe" value={preRegLastName} onChange={e => setPreRegLastName(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Email Address *</label>
+              <input type="email" required placeholder="worker@company.com" value={preRegEmail} onChange={e => setPreRegEmail(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Phone Number</label>
+              <input type="tel" placeholder="(555) 000-0000" value={preRegPhone} onChange={e => setPreRegPhone(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Job Title</label>
+              <input type="text" placeholder="e.g. Field Technician" value={preRegJobTitle} onChange={e => setPreRegJobTitle(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Billable Rate ($/hr)</label>
+              <input type="number" min="0" step="0.01" placeholder="0.00" value={preRegRate} onChange={e => setPreRegRate(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Home Address</label>
+              <input type="text" placeholder="123 Main St, City, State" value={preRegAddress} onChange={e => setPreRegAddress(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Latitude <span className="text-gray-300">(GPS)</span></label>
+                <input type="number" step="0.000001" placeholder="37.7749" value={preRegLat} onChange={e => setPreRegLat(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Longitude <span className="text-gray-300">(GPS)</span></label>
+                <input type="number" step="0.000001" placeholder="-122.4194" value={preRegLng} onChange={e => setPreRegLng(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none" />
+              </div>
+            </div>
+            <p className="text-[9px] text-gray-400 leading-tight">
+              GPS coordinates used for auto travel-time calculation.{' '}
+              <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-orange-500 underline">Find on Google Maps</a>
+            </p>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Access Level</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button type="button" onClick={() => setPreRegRole('employee')}
+                  className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${preRegRole === 'employee' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-white text-gray-400 border-gray-200 hover:text-gray-600'}`}>
+                  Employee
+                </button>
+                <button type="button" onClick={() => setPreRegRole('admin')}
+                  className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${preRegRole === 'admin' ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-white text-gray-400 border-gray-200 hover:text-gray-600'}`}>
+                  Admin
+                </button>
+              </div>
+            </div>
+            <button type="submit" disabled={preRegLoading}
+              className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-xs text-white font-bold py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer active:translate-y-px shadow-sm">
+              <Plus className="w-3.5 h-3.5" />
+              {preRegLoading ? 'Creating...' : 'Create Employee Profile'}
+            </button>
+          </form>
+        </div>
+
+        {/* 3. Pending Invites */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
+          <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-gray-400" />
+              Pending Invites
+            </span>
+            <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500">
+              {pendingEmployees.filter(p => !p.claimed).length} unclaimed
+            </span>
+          </h3>
+          {pendingEmployees.length === 0 ? (
+            <p className="text-xs text-gray-400 italic text-center py-4">No pending invites yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {pendingEmployees.map(p => (
+                <div key={p.email} className={`rounded-xl border px-3 py-2 text-xs flex items-start justify-between gap-2 ${p.claimed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="font-bold text-gray-800 truncate">{p.name}</div>
+                    <div className="text-[10px] text-gray-500 truncate">{p.email}</div>
+                    {p.jobTitle && <div className="text-[10px] text-gray-400">{p.jobTitle}</div>}
+                    <span className={`inline-block text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${p.claimed ? 'bg-green-100 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                      {p.claimed ? 'Claimed' : 'Pending'}
+                    </span>
+                  </div>
+                  {!p.claimed && (
+                    <button type="button" onClick={() => handleDeletePendingEmployee(p.email)}
+                      className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg shrink-0 transition-all cursor-pointer" title="Remove invite">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 4. Operational Parameters */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="settings-card">
+          <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
+            <Settings className="w-4 h-4 text-gray-400" />
+            Operational Parameters
+          </h3>
+          <div>
+            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Daily Company Auto-Clockout Hour</label>
+            <input type="time" value={autoLogout} onChange={(e) => setAutoLogout(e.target.value)}
+              className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-orange-500" />
+            <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
+              Workers left clocked in beyond this time will be clipped to this capping limit dynamically.
+            </p>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Company Travel Coverage (Minutes)</label>
+            <input type="number" min="0" max="240" value={companyTravelCoverage} onChange={(e) => setCompanyTravelCoverage(Number(e.target.value) || 0)}
+              className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-orange-500" />
+            <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
+              Company pays this many travel minutes per shift. Travel beyond this is on the employee.
+            </p>
+          </div>
+          <button type="button" onClick={handleSaveSettings}
+            className="w-full bg-orange-600 hover:bg-orange-700 text-[10px] font-bold text-white uppercase px-3 py-2 rounded-lg active:translate-y-px cursor-pointer transition-all">
+            Save Settings
+          </button>
+        </div>
+
+      </div>{/* end bottom admin tools grid */}
 
       </> /* end overview tab */}
     </div>
