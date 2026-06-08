@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { exportCleanPayrollCSV, exportPayrollExcel, exportInvoicePDF, EmployeeRateMap } from '../utils/exportUtils';
 import BiweeklyTimecardPanel from './BiweeklyTimecardPanel';
 import WeeklyRemindersPanel from './WeeklyRemindersPanel';
 import {
@@ -43,7 +44,10 @@ import {
   Plane,
   CheckCircle2,
   XCircle,
-  Bell
+  Bell,
+  Download,
+  FileText,
+  Table2
 } from 'lucide-react';
 
 import { UserProfile } from '../types';
@@ -87,7 +91,9 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [newJobRadius, setNewJobRadius] = useState(1609);
 
   // Registered employees for the employee filter dropdown
-  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string; homeAddress?: string; homeLatitude?: number; homeLongitude?: number }[]>([]);
+  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string; billableRate?: number; homeAddress?: string; homeLatitude?: number; homeLongitude?: number }[]>([]);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   // Filters
   const [filterEmployee, setFilterEmployee] = useState('');
@@ -155,6 +161,17 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     }
   };
 
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   // Load configuration & entries
   useEffect(() => {
     const unsubscribeEntries = onSnapshot(collection(db, 'time_entries'), (snapshot) => {
@@ -199,6 +216,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
           uid: d.id,
           name: d.data().name as string,
           email: d.data().email as string,
+          billableRate: d.data().billableRate as number | undefined,
           homeAddress: d.data().homeAddress as string | undefined,
           homeLatitude: d.data().homeLatitude as number | undefined,
           homeLongitude: d.data().homeLongitude as number | undefined,
@@ -524,64 +542,16 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     }
   };
 
-  // CSV Data compiler
-  const handleExportCSV = () => {
-    if (filteredEntries.length === 0) {
-      alert('No logged records exist for selected filter parameters to export.');
-      return;
-    }
-
-    const headers = [
-      'Employee',
-      'Date',
-      'Job Site',
-      'Cost Code',
-      'Clock In Time',
-      'Clock In Location',
-      'Clock Out Time',
-      'Clock Out Location',
-      'Travel Time (Mins)',
-      'Lunch Duration (Mins)',
-      'Regular Hours',
-      'Total Billable Hours',
-      'Description'
-    ];
-
-    const rows = filteredEntries.map(e => {
-      const metrics = getTotals(e);
-      const inTime = e.clockInTime?.seconds ? new Date(e.clockInTime.seconds * 1000).toISOString() : '';
-      const outTime = e.clockOutTime?.seconds ? new Date(e.clockOutTime.seconds * 1000).toISOString() : 'STILL ACTIVE';
-      const inCoords = e.clockInCoords ? `${e.clockInCoords.latitude};${e.clockInCoords.longitude}` : '';
-      const outCoords = e.clockOutCoords ? `${e.clockOutCoords.latitude};${e.clockOutCoords.longitude}` : '';
-
-      return [
-        `"${e.employeeName.replace(/"/g, '""')}"`,
-        `"${e.date}"`,
-        `"${e.jobName.replace(/"/g, '""')}"`,
-        `"${e.costCode.replace(/"/g, '""')}"`,
-        `"${inTime}"`,
-        `"${inCoords}"`,
-        `"${outTime}"`,
-        `"${outCoords}"`,
-        `"${metrics.travel}"`,
-        `"${metrics.lunch}"`,
-        `"${metrics.worked.toFixed(2)}"`,
-        `"${metrics.billable.toFixed(2)}"`,
-        `"${e.description.replace(/"/g, '""')}"`
-      ];
-    });
-
-    const csvContent = "data:text/csv;charset=utf-8,"
-      + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ForgeTrack_Billing_Invoice_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Build name → hourly rate map from registered employees
+  const getRateMap = (): EmployeeRateMap => {
+    const map: EmployeeRateMap = {};
+    registeredEmployees.forEach(e => { if (e.billableRate) map[e.name] = e.billableRate; });
+    return map;
   };
+
+  const handleExportCSV     = () => { exportCleanPayrollCSV(filteredEntries, getRateMap()); setExportMenuOpen(false); };
+  const handleExportExcel   = () => { exportPayrollExcel(filteredEntries, getRateMap()); setExportMenuOpen(false); };
+  const handleExportInvoice = () => { exportInvoicePDF(filteredEntries, getRateMap()); setExportMenuOpen(false); };
 
   // Aggregate stats logic
   const statsByJob = filteredEntries.reduce((acc: any, e) => {
@@ -1064,15 +1034,56 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={handleExportCSV}
-                className="bg-green-600 hover:bg-green-700 font-bold text-white px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm active:translate-y-px transition-all cursor-pointer"
-                id="export-csv-btn"
-              >
-                <Plus className="w-4 h-4" />
-                Export CSV Invoice Sheet
-              </button>
+              {/* Export dropdown */}
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setExportMenuOpen(v => !v)}
+                  className="bg-green-600 hover:bg-green-700 font-bold text-white px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm active:translate-y-px transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${exportMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {exportMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg z-50 min-w-[210px] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={handleExportCSV}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-100"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-green-600 shrink-0" />
+                      <div className="text-left">
+                        <div>Payroll CSV</div>
+                        <div className="text-[10px] font-normal text-gray-400">Clean format with totals</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportExcel}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-100"
+                    >
+                      <Table2 className="w-4 h-4 text-blue-600 shrink-0" />
+                      <div className="text-left">
+                        <div>Payroll Excel (.xlsx)</div>
+                        <div className="text-[10px] font-normal text-gray-400">3 sheets: data, employee & job summary</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportInvoice}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-orange-600 shrink-0" />
+                      <div className="text-left">
+                        <div>Invoice PDF</div>
+                        <div className="text-[10px] font-normal text-gray-400">Formatted invoice with summaries</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Filtering Matrix Grid */}
