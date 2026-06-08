@@ -47,7 +47,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         const pendingSnap = await getDoc(pendingRef);
         const pending = pendingSnap.exists() ? pendingSnap.data() : null;
 
-        const assignedRole = emailLower === 'kenneytyler14@gmail.com'
+        const assignedRole = emailLower === import.meta.env.VITE_ADMIN_EMAIL
           ? 'admin'
           : (pending?.role ?? role);
 
@@ -77,7 +77,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         // Sign In Flow
         const userCred = await signInWithEmailAndPassword(auth, email, password);
         // Bootstrap admin: ensure a full user document exists with role: 'admin'
-        if (email.toLowerCase().trim() === 'kenneytyler14@gmail.com') {
+        if (email.toLowerCase().trim() === import.meta.env.VITE_ADMIN_EMAIL) {
           await setDoc(doc(db, 'users', userCred.user.uid), {
             uid: userCred.user.uid,
             email: email.toLowerCase().trim(),
@@ -113,7 +113,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
       const user = userCred.user;
 
       const userEmail = user.email?.toLowerCase() || '';
-      const assignedRole = userEmail === 'kenneytyler14@gmail.com' ? 'admin' : 'employee';
+      const assignedRole = userEmail === import.meta.env.VITE_ADMIN_EMAIL ? 'admin' : 'employee';
 
       // Check for admin pre-registered pending profile
       const pendingRef = doc(db, 'pending_employees', userEmail);
@@ -125,7 +125,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         name: user.displayName || pending?.name || 'Google Employee',
         email: userEmail,
         // Bootstrapped admin always wins regardless of pending doc
-        role: userEmail === 'kenneytyler14@gmail.com' ? 'admin' : (pending?.role ?? assignedRole),
+        role: userEmail === import.meta.env.VITE_ADMIN_EMAIL ? 'admin' : (pending?.role ?? assignedRole),
         ...(pending?.jobTitle      && { jobTitle: pending.jobTitle }),
         ...(pending?.billableRate  && { billableRate: pending.billableRate }),
         ...(pending?.phoneNumber   && { phoneNumber: pending.phoneNumber }),
@@ -158,7 +158,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
   // Demo account quick setups
   const quickFill = (type: 'employee' | 'admin') => {
     if (type === 'admin') {
-      setEmail('kenneytyler14@gmail.com');
+      setEmail(import.meta.env.VITE_ADMIN_EMAIL);
       setPassword('admin123');
       setName('Kenney Tyler');
       setRole('admin');

@@ -37,7 +37,7 @@ export default function App() {
             const data: UserProfile = {
               ...rawData,
               uid: firebaseUser.uid,
-              ...(rawData.email?.toLowerCase() === 'kenneytyler14@gmail.com'
+              ...(rawData.email?.toLowerCase() === import.meta.env.VITE_ADMIN_EMAIL
                 ? { role: 'admin' as const }
                 : {}),
             };
@@ -49,7 +49,7 @@ export default function App() {
               uid: firebaseUser.uid,
               name: firebaseUser.displayName || 'Sandbox Worker',
               email: firebaseUser.email || '',
-              role: firebaseUser.email?.toLowerCase() === 'kenneytyler14@gmail.com' ? 'admin' : 'employee',
+              role: firebaseUser.email?.toLowerCase() === import.meta.env.VITE_ADMIN_EMAIL ? 'admin' : 'employee',
               createdAt: new Date()
             };
             setProfile(fallbackProfile);
@@ -64,7 +64,7 @@ export default function App() {
             uid: firebaseUser.uid,
             name: firebaseUser.displayName || 'Local Field Demo User',
             email: firebaseUser.email || 'developer_guest@hourglass.com',
-            role: firebaseUser.email?.toLowerCase() === 'kenneytyler14@gmail.com' ? 'admin' : 'employee',
+            role: firebaseUser.email?.toLowerCase() === import.meta.env.VITE_ADMIN_EMAIL ? 'admin' : 'employee',
             createdAt: new Date()
           };
           setProfile(clientMockProfile);
