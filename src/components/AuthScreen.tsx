@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   setPersistence,
@@ -10,94 +9,45 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { Lock, Mail, User, Clock, ToggleLeft, AlertCircle, ShieldAlert, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Clock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface AuthScreenProps {
   onSuccess: (uid: string) => void;
 }
 
 export default function AuthScreen({ onSuccess }: AuthScreenProps) {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'employee' | 'admin'>('employee');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
-      // Apply session persistence based on Remember Me checkbox
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-
-      if (isSignUp) {
-        // Sign Up Flow
-        const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = userCred.user.uid;
-        const emailLower = email.toLowerCase().trim();
-
-        // Check for admin pre-registered pending profile
-        const pendingRef = doc(db, 'pending_employees', emailLower);
-        const pendingSnap = await getDoc(pendingRef);
-        const pending = pendingSnap.exists() ? pendingSnap.data() : null;
-
-        const assignedRole = emailLower === import.meta.env.VITE_ADMIN_EMAIL
-          ? 'admin'
-          : (pending?.role ?? role);
-
-        const userDoc: Record<string, any> = {
-          uid,
-          name: pending?.name || name || 'Anonymous Worker',
-          email: emailLower,
-          role: assignedRole,
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      // Bootstrap admin doc if needed
+      if (email.toLowerCase().trim() === import.meta.env.VITE_ADMIN_EMAIL) {
+        await setDoc(doc(db, 'users', userCred.user.uid), {
+          uid: userCred.user.uid,
+          email: email.toLowerCase().trim(),
+          name: userCred.user.displayName || 'Admin',
+          role: 'admin',
           createdAt: new Date(),
-          ...(pending?.jobTitle      && { jobTitle: pending.jobTitle }),
-          ...(pending?.billableRate  && { billableRate: pending.billableRate }),
-          ...(pending?.phoneNumber   && { phoneNumber: pending.phoneNumber }),
-          ...(pending?.homeAddress   && { homeAddress: pending.homeAddress }),
-          ...(pending?.homeLatitude  && { homeLatitude: pending.homeLatitude }),
-          ...(pending?.homeLongitude && { homeLongitude: pending.homeLongitude }),
-        };
-
-        await setDoc(doc(db, 'users', uid), userDoc);
-
-        // Mark pending profile as claimed
-        if (pending) {
-          await setDoc(pendingRef, { claimed: true, claimedAt: new Date() }, { merge: true });
-        }
-
-        onSuccess(uid);
-      } else {
-        // Sign In Flow
-        const userCred = await signInWithEmailAndPassword(auth, email, password);
-        // Bootstrap admin: ensure a full user document exists with role: 'admin'
-        if (email.toLowerCase().trim() === import.meta.env.VITE_ADMIN_EMAIL) {
-          await setDoc(doc(db, 'users', userCred.user.uid), {
-            uid: userCred.user.uid,
-            email: email.toLowerCase().trim(),
-            name: userCred.user.displayName || name || 'Admin',
-            role: 'admin',
-            createdAt: new Date(),
-          }, { merge: true });
-        }
-        onSuccess(userCred.user.uid);
+        }, { merge: true });
       }
+      onSuccess(userCred.user.uid);
     } catch (err: any) {
-      console.error('Authentication Error: ', err);
-      if (err.code === 'auth/user-not-found') {
-        setError('No account exists for this email. Turn on "Sign Up" above to register.');
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        setError('No account found for this email. Contact your administrator.');
       } else if (err.code === 'auth/wrong-password') {
-        setError('Incorrect password. Please verify your credentials.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('This email address is already in use by another worker.');
+        setError('Incorrect password. Please try again.');
       } else {
-        setError(err.message || 'An unexpected authentication error occurred.');
+        setError(err.message || 'Sign in failed. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -111,11 +61,9 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
     try {
       const userCred = await signInWithPopup(auth, provider);
       const user = userCred.user;
-
       const userEmail = user.email?.toLowerCase() || '';
       const assignedRole = userEmail === import.meta.env.VITE_ADMIN_EMAIL ? 'admin' : 'employee';
 
-      // Check for admin pre-registered pending profile
       const pendingRef = doc(db, 'pending_employees', userEmail);
       const pendingSnap = await getDoc(pendingRef);
       const pending = pendingSnap.exists() ? pendingSnap.data() : null;
@@ -124,7 +72,6 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         uid: user.uid,
         name: user.displayName || pending?.name || 'Google Employee',
         email: userEmail,
-        // Bootstrapped admin always wins regardless of pending doc
         role: userEmail === import.meta.env.VITE_ADMIN_EMAIL ? 'admin' : (pending?.role ?? assignedRole),
         ...(pending?.jobTitle      && { jobTitle: pending.jobTitle }),
         ...(pending?.billableRate  && { billableRate: pending.billableRate }),
@@ -134,46 +81,36 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         ...(pending?.homeLongitude && { homeLongitude: pending.homeLongitude }),
       };
 
-      // Only set createdAt on first sign-in (merge won't overwrite existing fields for
-      // the keys not present here, but we guard createdAt explicitly)
-      const existingUserSnap = await getDoc(doc(db, 'users', user.uid));
-      if (!existingUserSnap.exists()) mergePayload.createdAt = new Date();
+      const existingSnap = await getDoc(doc(db, 'users', user.uid));
+      if (!existingSnap.exists()) mergePayload.createdAt = new Date();
 
       await setDoc(doc(db, 'users', user.uid), mergePayload, { merge: true });
 
-      // Mark pending profile as claimed
       if (pending && !pending.claimed) {
         await setDoc(pendingRef, { claimed: true, claimedAt: new Date() }, { merge: true });
       }
 
       onSuccess(user.uid);
     } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      setError('Google Sign-In failed or was closed. Please try again or use standard Email + Password signup.');
+      setError('Google Sign-In failed or was cancelled. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Demo account quick setups
   const quickFill = (type: 'employee' | 'admin') => {
     if (type === 'admin') {
       setEmail(import.meta.env.VITE_ADMIN_EMAIL);
       setPassword('admin123');
-      setName('Kenney Tyler');
-      setRole('admin');
     } else {
       setEmail('worker@fieldworks.com');
       setPassword('worker123');
-      setName('John Doe');
-      setRole('employee');
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8" id="auth-screen">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        {/* Brand Icon */}
         <div className="mx-auto h-16 w-16 bg-[#1c0a00] border-2 border-orange-500 rounded-2xl flex items-center justify-center shadow-lg">
           <Clock className="w-9 h-9 text-white" />
         </div>
@@ -188,55 +125,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white border border-gray-200 py-8 px-4 shadow-sm rounded-2xl sm:px-10">
 
-          {/* Sign In vs Sign Up Toggle Tab */}
-          <div className="flex bg-gray-100 p-1 rounded-lg mb-6 border border-gray-200">
-            <button
-              onClick={() => { setIsSignUp(false); setError(null); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
-                !isSignUp
-                  ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-              id="toggle-signin"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setIsSignUp(true); setError(null); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
-                isSignUp
-                  ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-              id="toggle-signup"
-            >
-              Register & Sign Up
-            </button>
-          </div>
-
-          <form className="space-y-4" onSubmit={handleAuth}>
-            {isSignUp && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    placeholder="e.g. John Doe"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                    id="signup-name-input"
-                  />
-                </div>
-              </div>
-            )}
-
+          <form className="space-y-4" onSubmit={handleSignIn}>
             <div>
               <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
                 Email Address
@@ -248,9 +137,9 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={e => setEmail(e.target.value)}
                   required
-                  placeholder="worker@agency.com"
+                  placeholder="worker@company.com"
                   className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                   id="auth-email-input"
                 />
@@ -268,7 +157,7 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={e => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
                   className="block w-full pl-10 pr-10 py-2.5 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
@@ -285,64 +174,21 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
               </div>
             </div>
 
-            {/* Remember Me — only shown on sign-in */}
-            {!isSignUp && (
-              <label className="flex items-center gap-2.5 cursor-pointer select-none w-fit">
-                <div
-                  onClick={() => setRememberMe(v => !v)}
-                  className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
-                    rememberMe ? 'bg-orange-600 border-orange-600' : 'bg-white border-gray-300'
-                  }`}
-                >
-                  {rememberMe && (
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
-                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </div>
-                <span className="text-xs text-gray-600 font-medium">Remember me on this device</span>
-              </label>
-            )}
-
-            {isSignUp && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-1.5">
-                  Select Field Role
-                </label>
-                <div className="grid grid-cols-2 gap-2" id="role-selector-container">
-                  <button
-                    type="button"
-                    onClick={() => setRole('employee')}
-                    className={`py-2 px-3 text-xs font-medium border rounded-xl transition-all ${
-                      role === 'employee'
-                        ? 'bg-orange-50 text-orange-700 border-orange-300 shadow-sm'
-                        : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
-                    }`}
-                    id="select-role-employee"
-                  >
-                    Employee / Worker
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRole('admin')}
-                    className={`py-2 px-3 text-xs font-medium border rounded-xl transition-all ${
-                      role === 'admin'
-                        ? 'bg-orange-50 text-orange-700 border-orange-300 shadow-sm'
-                        : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'
-                    }`}
-                    id="select-role-admin"
-                  >
-                    Admin / Manager
-                  </button>
-                </div>
-                {role === 'admin' && (
-                  <p className="mt-2 text-[10.5px] text-amber-700 leading-tight flex items-start gap-1">
-                    <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    Admins can manage job site locations, review employee timecards, adjust settings, and authorize manual approvals. Only select this if you are a manager.
-                  </p>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none w-fit">
+              <div
+                onClick={() => setRememberMe(v => !v)}
+                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                  rememberMe ? 'bg-orange-600 border-orange-600' : 'bg-white border-gray-300'
+                }`}
+              >
+                {rememberMe && (
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
+                    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 )}
               </div>
-            )}
+              <span className="text-xs text-gray-600 font-medium">Remember me on this device</span>
+            </label>
 
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex gap-2 text-red-700" id="auth-error-banner">
@@ -360,11 +206,10 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
               ) : null}
-              {isSignUp ? 'Create Work Account' : 'Sign In to Dashboard'}
+              Sign In to Dashboard
             </button>
           </form>
 
-          {/* Separator line */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center" aria-hidden="true">
               <div className="w-full border-t border-gray-200" />
@@ -391,7 +236,6 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
               Sign In with Google
             </button>
 
-            {/* Quick sandbox triggers */}
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200" id="quick-simulators-panel">
               <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-2">
                 Sandbox Demo Logins (No Sign Up Needed)
