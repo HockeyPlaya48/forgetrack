@@ -906,10 +906,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           </div>
           <div>
             <h1 className="text-lg font-bold text-white flex items-center gap-2">
-              Welcome, {user.name}
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/80 px-2.5 py-0.5 rounded-full">
-                Field Employee
-              </span>
+              Welcome, {user.name.split(' ')[0]}
             </h1>
             <p className="text-xs text-slate-300">{user.email}</p>
           </div>
