@@ -98,16 +98,6 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
     }
   };
 
-  const quickFill = (type: 'employee' | 'admin') => {
-    if (type === 'admin') {
-      setEmail(import.meta.env.VITE_ADMIN_EMAIL);
-      setPassword('admin123');
-    } else {
-      setEmail('worker@fieldworks.com');
-      setPassword('worker123');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8" id="auth-screen">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -236,32 +226,6 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
               Sign In with Google
             </button>
 
-            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200" id="quick-simulators-panel">
-              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-2">
-                Sandbox Demo Logins (No Sign Up Needed)
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => quickFill('employee')}
-                  className="flex-1 bg-white hover:bg-orange-50 text-[11px] font-semibold text-orange-600 py-1.5 px-2 rounded-lg border border-gray-200 hover:border-orange-200 flex items-center justify-center gap-1 transition-all"
-                  id="fill-demo-employee"
-                >
-                  Demo Employee
-                </button>
-                <button
-                  type="button"
-                  onClick={() => quickFill('admin')}
-                  className="flex-1 bg-white hover:bg-green-50 text-[11px] font-semibold text-green-600 py-1.5 px-2 rounded-lg border border-gray-200 hover:border-green-200 flex items-center justify-center gap-1 transition-all"
-                  id="fill-demo-admin"
-                >
-                  Demo Admin
-                </button>
-              </div>
-              <p className="text-[9.5px] text-gray-400 text-center mt-2">
-                Click a button to autofill. Use passwords <code className="text-gray-600">worker123</code> / <code className="text-gray-600">admin123</code> and click Submit.
-              </p>
-            </div>
           </div>
 
         </div>
