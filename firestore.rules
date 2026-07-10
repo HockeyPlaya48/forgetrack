@@ -42,19 +42,22 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      
-      allow create: if isSignedIn() && request.auth.uid == userId && (
-        // Automatic assignment for standard employees
-        (incoming().role == 'employee' && incoming().email == request.auth.token.email) ||
-        // Bootstrapped admin
-        (request.auth.token.email == 'kenneytyler14@gmail.com' && incoming().role == 'admin')
-      ) && isValidUser(incoming());
+
+      allow create: if isSignedIn() && (
+        // Admin creates account on behalf of employee (new flow — REST API creates auth, admin writes Firestore doc)
+        (isAdmin() && isValidUserForAdmin(incoming())) ||
+        // Employee self-registers (legacy flow)
+        (request.auth.uid == userId && (
+          (incoming().role == 'employee' && incoming().email == request.auth.token.email) ||
+          (request.auth.token.email == 'kenneytyler14@gmail.com' && incoming().role == 'admin')
+        ) && isValidUser(incoming()))
+      );
 
       allow update: if isSignedIn() && (
         isAdmin() || (
-          request.auth.uid == userId && 
-          incoming().role == existing().role && 
-          incoming().email == existing().email && 
+          request.auth.uid == userId &&
+          incoming().role == existing().role &&
+          incoming().email == existing().email &&
           isValidUser(incoming())
         )
       );
@@ -64,8 +67,17 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'email', 'name', 'role', 'createdAt', 'homeAddress', 'homeLatitude', 'homeLongitude', 'jobTitle', 'billableRate', 'phoneNumber']) &&
+             data.keys().hasOnly(['uid', 'email', 'name', 'role', 'createdAt', 'homeAddress', 'homeLatitude', 'homeLongitude', 'jobTitle', 'billableRate', 'phoneNumber', 'currentPassword', 'mustChangePassword']) &&
              data.uid == request.auth.uid &&
+             data.uid is string &&
+             data.email is string && data.email.size() <= 200 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.role in ['employee', 'admin'];
+    }
+
+    function isValidUserForAdmin(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt']) &&
+             data.keys().hasOnly(['uid', 'email', 'name', 'role', 'createdAt', 'homeAddress', 'homeLatitude', 'homeLongitude', 'jobTitle', 'billableRate', 'phoneNumber', 'currentPassword', 'mustChangePassword']) &&
              data.uid is string &&
              data.email is string && data.email.size() <= 200 &&
              data.name is string && data.name.size() <= 200 &&

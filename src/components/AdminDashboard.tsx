@@ -47,7 +47,10 @@ import {
   Bell,
   Download,
   FileText,
-  Table2
+  Table2,
+  Eye,
+  EyeOff,
+  Lock
 } from 'lucide-react';
 
 import { UserProfile } from '../types';
@@ -91,7 +94,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [newJobRadius, setNewJobRadius] = useState(1609);
 
   // Registered employees for the employee filter dropdown
-  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string; billableRate?: number; homeAddress?: string; homeLatitude?: number; homeLongitude?: number }[]>([]);
+  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string; billableRate?: number; homeAddress?: string; homeLatitude?: number; homeLongitude?: number; currentPassword?: string; mustChangePassword?: boolean }[]>([]);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -139,8 +142,17 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [preRegLat, setPreRegLat] = useState('');
   const [preRegLng, setPreRegLng] = useState('');
   const [preRegRole, setPreRegRole] = useState<'employee' | 'admin'>('employee');
+  const [preRegPassword, setPreRegPassword] = useState('');
+  const [showPreRegPassword, setShowPreRegPassword] = useState(false);
   const [preRegLoading, setPreRegLoading] = useState(false);
   const [pendingEmployees, setPendingEmployees] = useState<PendingEmployee[]>([]);
+
+  // Address autocomplete
+  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+  const addressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Employee password reveal set
+  const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(new Set());
 
   // Map helpers
   const osmEmbedUrl = (lat: number, lng: number) =>
@@ -220,6 +232,8 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
           homeAddress: d.data().homeAddress as string | undefined,
           homeLatitude: d.data().homeLatitude as number | undefined,
           homeLongitude: d.data().homeLongitude as number | undefined,
+          currentPassword: d.data().currentPassword as string | undefined,
+          mustChangePassword: d.data().mustChangePassword as boolean | undefined,
         }))
         .filter(u => u.name && u.name !== 'Anonymous Worker')
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -496,21 +510,46 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     }
   };
 
-  // Pre-register a new employee
+  // Create a full employee account (Firebase Auth + Firestore users doc)
   const handlePreRegisterEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     const emailKey = preRegEmail.trim().toLowerCase();
     if (!emailKey || !preRegFirstName.trim() || !preRegLastName.trim()) return;
+    if (!preRegPassword.trim() || preRegPassword.trim().length < 6) {
+      alert('Password must be at least 6 characters.');
+      return;
+    }
     setPreRegLoading(true);
     try {
       const name = `${preRegFirstName.trim()} ${preRegLastName.trim()}`;
+
+      // Create Firebase Auth account via REST API — does not affect admin's current session
+      const signUpRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${import.meta.env.VITE_FIREBASE_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailKey, password: preRegPassword.trim(), returnSecureToken: false }),
+        }
+      );
+      const signUpData = await signUpRes.json();
+      if (!signUpRes.ok) {
+        const msg: string = signUpData.error?.message || 'Unknown error';
+        if (msg === 'EMAIL_EXISTS') throw new Error(`An account already exists for ${emailKey}.`);
+        throw new Error(msg);
+      }
+
+      const uid: string = signUpData.localId;
+
+      // Write full user profile to Firestore users/{uid}
       const payload: Record<string, any> = {
+        uid,
         email: emailKey,
         name,
         role: preRegRole,
         createdAt: new Date(),
-        createdBy: user.uid,
-        claimed: false,
+        mustChangePassword: true,
+        currentPassword: preRegPassword.trim(),
       };
       if (preRegJobTitle.trim())  payload.jobTitle = preRegJobTitle.trim();
       if (preRegRate)             payload.billableRate = Number(preRegRate);
@@ -519,17 +558,46 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       if (preRegLat)              payload.homeLatitude = Number(preRegLat);
       if (preRegLng)              payload.homeLongitude = Number(preRegLng);
 
-      await setDoc(doc(db, 'pending_employees', emailKey), payload);
+      await setDoc(doc(db, 'users', uid), payload);
+
       setPreRegFirstName(''); setPreRegLastName(''); setPreRegEmail('');
       setPreRegPhone(''); setPreRegJobTitle(''); setPreRegRate('');
       setPreRegAddress(''); setPreRegLat(''); setPreRegLng('');
-      setPreRegRole('employee');
-      triggerToast(`Profile created for ${name}. They can now sign in with ${emailKey}.`);
-    } catch (err) {
+      setPreRegRole('employee'); setPreRegPassword('');
+      setAddressSuggestions([]);
+      triggerToast(`Account created for ${name}. Share ${emailKey} + the password with them — they sign in directly.`);
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to create employee profile.');
+      alert(err.message || 'Failed to create employee account.');
     }
     setPreRegLoading(false);
+  };
+
+  const handleAddressInput = (value: string) => {
+    setPreRegAddress(value);
+    if (addressTimeoutRef.current) clearTimeout(addressTimeoutRef.current);
+    if (value.length < 3) { setAddressSuggestions([]); return; }
+    addressTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=5`);
+        const data = await res.json();
+        setAddressSuggestions(data.features || []);
+      } catch { setAddressSuggestions([]); }
+    }, 350);
+  };
+
+  const handleSelectAddress = (feature: any) => {
+    const p = feature.properties;
+    const parts = [
+      p.housenumber && p.street ? `${p.housenumber} ${p.street}` : (p.street || p.name),
+      p.city || p.county,
+      p.state,
+      p.postcode,
+    ].filter(Boolean);
+    setPreRegAddress(parts.join(', '));
+    setPreRegLat(feature.geometry.coordinates[1].toFixed(6));
+    setPreRegLng(feature.geometry.coordinates[0].toFixed(6));
+    setAddressSuggestions([]);
   };
 
   const handleDeletePendingEmployee = async (email: string) => {
@@ -1536,7 +1604,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
             Add Employee
           </h3>
           <p className="text-[10px] text-gray-400 leading-tight -mt-1">
-            Create a profile. Employee signs in with this email to claim it.
+            Creates the full account. Share the email + password with the employee — they sign in directly. No registration needed.
           </p>
 
           <form onSubmit={handlePreRegisterEmployee} className="space-y-3">
@@ -1558,6 +1626,28 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                 className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
             </div>
             <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Temporary Password *</label>
+              <div className="relative">
+                <input
+                  type={showPreRegPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Min 6 characters"
+                  value={preRegPassword}
+                  onChange={e => setPreRegPassword(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 pr-8 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPreRegPassword(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPreRegPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <p className="text-[9px] text-gray-400 mt-0.5">Employee is prompted to change this on first login.</p>
+            </div>
+            <div>
               <label className="block text-[10px] text-gray-500 mb-1">Phone Number</label>
               <input type="tel" placeholder="(555) 000-0000" value={preRegPhone} onChange={e => setPreRegPhone(e.target.value)}
                 className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
@@ -1574,24 +1664,54 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
             </div>
             <div>
               <label className="block text-[10px] text-gray-500 mb-1">Home Address</label>
-              <input type="text" placeholder="123 Main St, City, State" value={preRegAddress} onChange={e => setPreRegAddress(e.target.value)}
-                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Start typing address..."
+                  value={preRegAddress}
+                  onChange={e => handleAddressInput(e.target.value)}
+                  onBlur={() => setTimeout(() => setAddressSuggestions([]), 200)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+                {addressSuggestions.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {addressSuggestions.map((f, i) => {
+                      const p = f.properties;
+                      const label = [
+                        p.housenumber && p.street ? `${p.housenumber} ${p.street}` : (p.street || p.name),
+                        p.city || p.county,
+                        p.state,
+                        p.country,
+                      ].filter(Boolean).join(', ');
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onMouseDown={() => handleSelectAddress(f)}
+                          className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-0"
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Latitude <span className="text-gray-300">(GPS)</span></label>
+                <label className="block text-[10px] text-gray-500 mb-1">Latitude <span className="text-gray-300">(auto-filled)</span></label>
                 <input type="number" step="0.000001" placeholder="37.7749" value={preRegLat} onChange={e => setPreRegLat(e.target.value)}
                   className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none" />
               </div>
               <div>
-                <label className="block text-[10px] text-gray-500 mb-1">Longitude <span className="text-gray-300">(GPS)</span></label>
+                <label className="block text-[10px] text-gray-500 mb-1">Longitude <span className="text-gray-300">(auto-filled)</span></label>
                 <input type="number" step="0.000001" placeholder="-122.4194" value={preRegLng} onChange={e => setPreRegLng(e.target.value)}
                   className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none" />
               </div>
             </div>
             <p className="text-[9px] text-gray-400 leading-tight">
-              GPS coordinates used for auto travel-time calculation.{' '}
-              <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" className="text-orange-500 underline">Find on Google Maps</a>
+              GPS coordinates auto-fill when an address suggestion is selected. Used for travel-time calculation.
             </p>
             <div>
               <label className="block text-[10px] text-gray-500 mb-1">Access Level</label>
@@ -1680,6 +1800,69 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
         </div>
 
       </div>{/* end bottom admin tools grid */}
+
+      {/* Employee Account Passwords */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <Lock className="w-4 h-4 text-gray-400" />
+            Employee Account Passwords
+          </span>
+          <span className="text-[9px] font-normal text-gray-400 normal-case tracking-normal">For account recovery only — keep confidential</span>
+        </h3>
+        {registeredEmployees.filter(e => e.currentPassword).length === 0 ? (
+          <p className="text-xs text-gray-400 italic text-center py-4">
+            No admin-created accounts yet. Passwords appear here after you create employee accounts above.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wider text-gray-500 border-b border-gray-100">
+                  <th className="text-left py-2 pr-6 font-semibold">Name</th>
+                  <th className="text-left py-2 pr-6 font-semibold">Email</th>
+                  <th className="text-left py-2 pr-6 font-semibold">Password</th>
+                  <th className="text-left py-2 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {registeredEmployees.filter(e => e.currentPassword).map(emp => (
+                  <tr key={emp.uid} className="hover:bg-gray-50 transition-colors">
+                    <td className="py-2.5 pr-6 font-semibold text-gray-800">{emp.name}</td>
+                    <td className="py-2.5 pr-6 text-gray-500 font-mono text-[10px]">{emp.email}</td>
+                    <td className="py-2.5 pr-6">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-gray-700">
+                          {revealedPasswords.has(emp.uid) ? emp.currentPassword : '••••••••'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setRevealedPasswords(prev => {
+                            const next = new Set(prev);
+                            if (next.has(emp.uid)) next.delete(emp.uid); else next.add(emp.uid);
+                            return next;
+                          })}
+                          className="text-gray-400 hover:text-gray-600 cursor-pointer"
+                          title={revealedPasswords.has(emp.uid) ? 'Hide' : 'Reveal'}
+                        >
+                          {revealedPasswords.has(emp.uid) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </td>
+                    <td className="py-2.5">
+                      {emp.mustChangePassword ? (
+                        <span className="text-[9px] font-bold uppercase bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full">Temp — Must Change</span>
+                      ) : (
+                        <span className="text-[9px] font-bold uppercase bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">Employee Updated</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       </> /* end overview tab */}
     </div>

@@ -14,6 +14,9 @@ export interface UserProfile {
   jobTitle?: string;
   billableRate?: number;
   phoneNumber?: string;
+  // Password management — set by admin, updated on first login
+  mustChangePassword?: boolean;
+  currentPassword?: string;
 }
 
 export interface PendingEmployee {
