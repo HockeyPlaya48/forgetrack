@@ -421,9 +421,31 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
         reject('Your device does not support GPS. Contact your manager.');
         return;
       }
+
+      let settled = false;
+      // Some mobile browsers/PWAs never invoke either callback when location
+      // services are off at the OS level, silently ignoring the native `timeout`
+      // option below. This hard timeout guarantees the promise always settles so
+      // clock-in/out/lunch never hangs indefinitely waiting on GPS.
+      const hardTimeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject('GPS timed out. Continuing without location.');
+      }, 12000);
+
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => reject('Location access denied. Enable GPS permissions in your browser settings and try again.'),
+        (pos) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(hardTimeoutId);
+          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(hardTimeoutId);
+          reject('Location access denied. Enable GPS permissions in your browser settings and try again.');
+        },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     });
