@@ -74,6 +74,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   const [gpsLoading, setGpsLoading] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
 
+  // Guards the Lunch/Clock-Out buttons while a GPS+Firestore round trip is in flight,
+  // so a slow/failed GPS fix (bad signal) can't be double-tapped into a race
+  const [isClockActionPending, setIsClockActionPending] = useState<boolean>(false);
+
   // Job site loading error (e.g. Firestore rules not deployed)
   const [jobsLoadError, setJobsLoadError] = useState<string | null>(null);
 
@@ -705,112 +709,122 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
 
   // Clock Out Action Handler
   const handleClockOut = async () => {
-    if (!activeEntry) return;
+    if (!activeEntry || isClockActionPending) return;
+    setIsClockActionPending(true);
 
-    // Best-effort GPS — store null if unavailable, never block
-    let clockOutCoords: { latitude: number; longitude: number } | null = null;
     try {
-      const coords = await fetchGPS();
-      clockOutCoords = { latitude: coords.lat, longitude: coords.lng };
-      setUserLat(coords.lat);
-      setUserLng(coords.lng);
-    } catch {
-      // Non-blocking — null coords stored
-    }
-
-    const payload = {
-      ...activeEntry,
-      clockOutTime: new Date(),
-      clockOutCoords,
-      status: 'completed' as const,
-      costCode: selectedCostCode,
-      description: description,
-      travelTimeOut: Number(travelOut) || 0,
-      updatedAt: new Date()
-    };
-
-    if (isOnline) {
-      try {
-        await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
-        setTravelOut(0);
-        setDescription('');
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
-      }
-    } else {
-      queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
-      setActiveEntry(null);
-      setTravelOut(0);
-      setDescription('');
-      alert('Offline Mode: Your clock-out has been cached locally.');
-    }
-  };
-
-  // Lunch Breaks Handler
-  const handleLunchToggle = async () => {
-    if (!activeEntry) return;
-
-    if (!activeEntry.lunchStart) {
-      // Starting lunch — capture GPS best-effort
-      let lunchStartCoords: { latitude: number; longitude: number } | null = null;
+      // Best-effort GPS — store null if unavailable, never block
+      let clockOutCoords: { latitude: number; longitude: number } | null = null;
       try {
         const coords = await fetchGPS();
-        lunchStartCoords = { latitude: coords.lat, longitude: coords.lng };
+        clockOutCoords = { latitude: coords.lat, longitude: coords.lng };
         setUserLat(coords.lat);
         setUserLng(coords.lng);
-      } catch { /* non-blocking */ }
+      } catch {
+        // Non-blocking — null coords stored
+      }
 
       const payload = {
         ...activeEntry,
-        lunchStart: new Date(),
-        lunchStartCoords,
+        clockOutTime: new Date(),
+        clockOutCoords,
+        status: 'completed' as const,
+        costCode: selectedCostCode,
+        description: description,
+        travelTimeOut: Number(travelOut) || 0,
         updatedAt: new Date()
       };
 
       if (isOnline) {
         try {
           await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
+          setTravelOut(0);
+          setDescription('');
         } catch (error) {
           handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
         }
       } else {
         queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
-        setActiveEntry(payload);
+        setActiveEntry(null);
+        setTravelOut(0);
+        setDescription('');
+        alert('Offline Mode: Your clock-out has been cached locally.');
       }
-    } else {
-      const start = new Date(activeEntry.lunchStart.seconds * 1000 || activeEntry.lunchStart);
-      const end = new Date();
-      const diffMs = end.getTime() - start.getTime();
-      const diffMins = Math.round(diffMs / (60 * 1000));
+    } finally {
+      setIsClockActionPending(false);
+    }
+  };
 
-      // Ending lunch — capture GPS best-effort
-      let lunchEndCoords: { latitude: number; longitude: number } | null = null;
-      try {
-        const coords = await fetchGPS();
-        lunchEndCoords = { latitude: coords.lat, longitude: coords.lng };
-        setUserLat(coords.lat);
-        setUserLng(coords.lng);
-      } catch { /* non-blocking */ }
+  // Lunch Breaks Handler
+  const handleLunchToggle = async () => {
+    if (!activeEntry || isClockActionPending) return;
+    setIsClockActionPending(true);
 
-      const payload = {
-        ...activeEntry,
-        lunchEnd: end,
-        lunchEndCoords,
-        lunchDuration: (activeEntry.lunchDuration || 0) + diffMins,
-        lunchStart: null,
-        updatedAt: end
-      };
-
-      if (isOnline) {
+    try {
+      if (!activeEntry.lunchStart) {
+        // Starting lunch — capture GPS best-effort
+        let lunchStartCoords: { latitude: number; longitude: number } | null = null;
         try {
-          await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
-        } catch (error) {
-          handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
+          const coords = await fetchGPS();
+          lunchStartCoords = { latitude: coords.lat, longitude: coords.lng };
+          setUserLat(coords.lat);
+          setUserLng(coords.lng);
+        } catch { /* non-blocking */ }
+
+        const payload = {
+          ...activeEntry,
+          lunchStart: new Date(),
+          lunchStartCoords,
+          updatedAt: new Date()
+        };
+
+        if (isOnline) {
+          try {
+            await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
+          } catch (error) {
+            handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
+          }
+        } else {
+          queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
+          setActiveEntry(payload);
         }
       } else {
-        queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
-        setActiveEntry(payload);
+        const start = new Date(activeEntry.lunchStart.seconds * 1000 || activeEntry.lunchStart);
+        const end = new Date();
+        const diffMs = end.getTime() - start.getTime();
+        const diffMins = Math.round(diffMs / (60 * 1000));
+
+        // Ending lunch — capture GPS best-effort
+        let lunchEndCoords: { latitude: number; longitude: number } | null = null;
+        try {
+          const coords = await fetchGPS();
+          lunchEndCoords = { latitude: coords.lat, longitude: coords.lng };
+          setUserLat(coords.lat);
+          setUserLng(coords.lng);
+        } catch { /* non-blocking */ }
+
+        const payload = {
+          ...activeEntry,
+          lunchEnd: end,
+          lunchEndCoords,
+          lunchDuration: (activeEntry.lunchDuration || 0) + diffMins,
+          lunchStart: null,
+          updatedAt: end
+        };
+
+        if (isOnline) {
+          try {
+            await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
+          } catch (error) {
+            handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
+          }
+        } else {
+          queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
+          setActiveEntry(payload);
+        }
       }
+    } finally {
+      setIsClockActionPending(false);
     }
   };
 
@@ -1058,7 +1072,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                     <button
                       type="button"
                       onClick={handleLunchToggle}
-                      className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold transition-all shadow-sm active:translate-y-px flex items-center justify-center gap-1.5 cursor-pointer ${
+                      disabled={isClockActionPending}
+                      className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold transition-all shadow-sm active:translate-y-px flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                         activeEntry.lunchStart
                           ? 'bg-green-600 hover:bg-green-700 text-white'
                           : 'bg-orange-500 hover:bg-orange-600 text-white'
@@ -1066,8 +1081,15 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                       id="lunch-toggle-btn"
                     >
                       <Coffee className="w-4 h-4" />
-                      {activeEntry.lunchStart ? 'End Lunch (Resume Work)' : 'Clock Out: Go to Lunch'}
+                      {isClockActionPending
+                        ? 'Working…'
+                        : activeEntry.lunchStart ? 'End Lunch (Resume Work)' : 'Clock Out: Go to Lunch'}
                     </button>
+                    {isClockActionPending && (
+                      <p className="text-[10.5px] text-center text-gray-400">
+                        Getting your location — this can take a few seconds on weak signal. Please don't tap again.
+                      </p>
+                    )}
 
                     {activeEntry.lunchStart && (() => {
                       const lunchStartMs = activeEntry.lunchStart.seconds
@@ -1269,16 +1291,21 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                 <button
                   type="button"
                   onClick={handleClockOut}
-                  disabled={!!activeEntry.lunchStart || !description.trim()}
-                  className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 active:translate-y-px transition-all font-bold text-white text-base py-5 rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={!!activeEntry.lunchStart || !description.trim() || isClockActionPending}
+                  className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed active:translate-y-px transition-all font-bold text-white text-base py-5 rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   id="clockout-trigger-btn"
                 >
                   <Square className="w-5 h-5 fill-white" />
-                  Clock Out
+                  {isClockActionPending ? 'Working…' : 'Clock Out'}
                 </button>
                 {activeEntry.lunchStart && (
                   <p className="text-[11px] text-center text-red-600 leading-tight">
                     * You must finish your active Lunch Break before clocking out.
+                  </p>
+                )}
+                {isClockActionPending && (
+                  <p className="text-[10.5px] text-center text-gray-400">
+                    Getting your location — this can take a few seconds on weak signal. Please don't tap again.
                   </p>
                 )}
 
