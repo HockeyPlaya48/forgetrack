@@ -682,9 +682,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       clockInCoords = { latitude: coords.lat, longitude: coords.lng };
       setUserLat(coords.lat);
       setUserLng(coords.lng);
-    } catch {
-      // GPS unavailable — proceed without location, note it for admin visibility
-      setGpsError('No GPS signal detected. Clocked in without location — your manager will see this on the timecard.');
+    } catch (err) {
+      // GPS unavailable — proceed without location, surface the real reason for admin/diagnostic visibility
+      const reason = typeof err === 'string' ? err : 'No GPS signal detected.';
+      setGpsError(`${reason} Clocked in without location — your manager will see this on the timecard.`);
     }
 
     setGpsLoading(false);
@@ -734,6 +735,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     if (!activeEntry || isClockActionPending) return;
     setIsClockActionPending(true);
 
+    setGpsError(null);
     try {
       // Best-effort GPS — store null if unavailable, never block
       let clockOutCoords: { latitude: number; longitude: number } | null = null;
@@ -742,8 +744,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
         clockOutCoords = { latitude: coords.lat, longitude: coords.lng };
         setUserLat(coords.lat);
         setUserLng(coords.lng);
-      } catch {
-        // Non-blocking — null coords stored
+      } catch (err) {
+        // Non-blocking — null coords stored, but surface the real reason
+        const reason = typeof err === 'string' ? err : 'No GPS signal detected.';
+        setGpsError(`${reason} Clocked out without location.`);
       }
 
       const payload = {
@@ -781,6 +785,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   const handleLunchToggle = async () => {
     if (!activeEntry || isClockActionPending) return;
     setIsClockActionPending(true);
+    setGpsError(null);
 
     try {
       if (!activeEntry.lunchStart) {
@@ -791,7 +796,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           lunchStartCoords = { latitude: coords.lat, longitude: coords.lng };
           setUserLat(coords.lat);
           setUserLng(coords.lng);
-        } catch { /* non-blocking */ }
+        } catch (err) {
+          const reason = typeof err === 'string' ? err : 'No GPS signal detected.';
+          setGpsError(`${reason} Lunch logged without location.`);
+        }
 
         const payload = {
           ...activeEntry,
@@ -823,7 +831,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           lunchEndCoords = { latitude: coords.lat, longitude: coords.lng };
           setUserLat(coords.lat);
           setUserLng(coords.lng);
-        } catch { /* non-blocking */ }
+        } catch (err) {
+          const reason = typeof err === 'string' ? err : 'No GPS signal detected.';
+          setGpsError(`${reason} Lunch return logged without location.`);
+        }
 
         const payload = {
           ...activeEntry,
@@ -1329,6 +1340,14 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
                   <p className="text-[10.5px] text-center text-gray-400">
                     Getting your location — this can take a few seconds on weak signal. Please don't tap again.
                   </p>
+                )}
+
+                {/* GPS status note — amber info only, never blocks */}
+                {gpsError && (
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{gpsError}</span>
+                  </div>
                 )}
 
                 {/* Manual clock-out correction */}
