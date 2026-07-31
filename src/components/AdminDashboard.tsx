@@ -50,7 +50,8 @@ import {
   Table2,
   Eye,
   EyeOff,
-  Lock
+  Lock,
+  LogOut
 } from 'lucide-react';
 
 import { UserProfile } from '../types';
@@ -332,6 +333,27 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     } catch (err) {
       console.error(err);
       alert('Rejection failed.');
+    }
+  };
+
+  // Admin override — force-close a shift an employee left clocked in (forgot to clock out,
+  // app closed before auto-logout could run, etc). Flags it for the employee/admin to verify
+  // hours rather than silently trusting an admin-picked clock-out time.
+  const handleForceClockOut = async (entry: TimeEntry) => {
+    if (!confirm(`Force clock out ${entry.employeeName} right now? They'll need to verify these hours are correct.`)) return;
+    try {
+      await updateDoc(doc(db, 'time_entries', entry.id), {
+        clockOutTime: new Date(),
+        clockOutCoords: null,
+        status: 'completed',
+        isManualEdit: true,
+        description: `${entry.description} [Force clocked out by admin on ${new Date().toLocaleString()} — please verify these hours]`,
+        updatedAt: new Date()
+      });
+      triggerToast(`${entry.employeeName} force clocked out. Flagged for review.`);
+    } catch (err) {
+      console.error(err);
+      alert('Force clock-out failed.');
     }
   };
 
@@ -1422,21 +1444,33 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                               "{e.description}"
                             </td>
                             <td className="px-4 py-4 text-center">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedLocationId(isExpanded ? null : e.id)}
-                                disabled={!hasCoords}
-                                title={hasCoords ? 'View location history' : 'No GPS data'}
-                                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                                  isExpanded
-                                    ? 'bg-orange-100 text-orange-700'
-                                    : hasCoords
-                                      ? 'text-gray-400 hover:bg-orange-50 hover:text-orange-600'
-                                      : 'text-gray-200 cursor-not-allowed'
-                                }`}
-                              >
-                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
-                              </button>
+                              <div className="flex items-center justify-center gap-1.5">
+                                {e.status === 'active' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleForceClockOut(e)}
+                                    title="Force clock out — employee left this shift active"
+                                    className="p-1.5 rounded-lg transition-all cursor-pointer text-red-500 hover:bg-red-50 hover:text-red-700"
+                                  >
+                                    <LogOut className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedLocationId(isExpanded ? null : e.id)}
+                                  disabled={!hasCoords}
+                                  title={hasCoords ? 'View location history' : 'No GPS data'}
+                                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                    isExpanded
+                                      ? 'bg-orange-100 text-orange-700'
+                                      : hasCoords
+                                        ? 'text-gray-400 hover:bg-orange-50 hover:text-orange-600'
+                                        : 'text-gray-200 cursor-not-allowed'
+                                  }`}
+                                >
+                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                           {isExpanded && (
