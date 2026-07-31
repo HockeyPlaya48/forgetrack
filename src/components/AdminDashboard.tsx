@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { exportCleanPayrollCSV, exportPayrollExcel, exportInvoicePDF, EmployeeRateMap } from '../utils/exportUtils';
 import BiweeklyTimecardPanel from './BiweeklyTimecardPanel';
 import WeeklyRemindersPanel from './WeeklyRemindersPanel';
@@ -15,7 +16,7 @@ import {
   setDoc
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { JobSite, TimeEntry, AppSettings, COST_CODES, TimeOffRequest, PendingEmployee } from '../types';
+import { JobSite, TimeEntry, AppSettings, COST_CODES, TimeOffRequest, PendingEmployee, CostCode, CostCodeType, CostCodeUnit } from '../types';
 import { getHaversineDistance } from './MapMock';
 import {
   Briefcase,
@@ -50,7 +51,11 @@ import {
   Table2,
   Eye,
   EyeOff,
-  Lock
+  Lock,
+  Tag,
+  Pencil,
+  Upload,
+  LogOut
 } from 'lucide-react';
 
 import { UserProfile } from '../types';
@@ -154,24 +159,41 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   // Employee password reveal set
   const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(new Set());
 
+  // Cost Codes
+  const [costCodes, setCostCodes] = useState<CostCode[]>([]);
+  const [ccSearch, setCcSearch] = useState('');
+  const [ccPage, setCcPage] = useState(1);
+  const CC_PAGE_SIZE = 10;
+  const [ccFormOpen, setCcFormOpen] = useState(false);
+  const [ccEditId, setCcEditId] = useState<string | null>(null);
+  const [ccCode, setCcCode] = useState('');
+  const [ccDescription, setCcDescription] = useState('');
+  const [ccDivision, setCcDivision] = useState('');
+  const [ccCostType, setCcCostType] = useState<CostCodeType>('Labor');
+  const [ccUnit, setCcUnit] = useState<CostCodeUnit>('HR');
+  const [ccBillable, setCcBillable] = useState(true);
+  const [ccActive, setCcActive] = useState(true);
+  const [ccIsGlobal, setCcIsGlobal] = useState(true);
+  const [ccJobId, setCcJobId] = useState('');
+  const [ccNotes, setCcNotes] = useState('');
+
+  // CSV/Excel import
+  const [ccImportOpen, setCcImportOpen] = useState(false);
+  const [ccImportRows, setCcImportRows] = useState<Partial<CostCode>[]>([]);
+  const [ccImportLoading, setCcImportLoading] = useState(false);
+  const ccFileRef = useRef<HTMLInputElement>(null);
+
+  // Job site editing
+  const [editJobId, setEditJobId] = useState<string | null>(null);
+  const [jobAddressSuggestions, setJobAddressSuggestions] = useState<any[]>([]);
+  const jobAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Map helpers
   const osmEmbedUrl = (lat: number, lng: number) =>
     `https://www.openstreetmap.org/export/embed.html?bbox=${(lng - 0.003).toFixed(6)},${(lat - 0.003).toFixed(6)},${(lng + 0.003).toFixed(6)},${(lat + 0.003).toFixed(6)}&layer=mapnik&marker=${lat},${lng}`;
 
   const gMapsUrl = (lat: number, lng: number) =>
     `https://www.google.com/maps?q=${lat},${lng}`;
-
-  const DEFAULT_SITES: JobSite[] = [
-    { id: 'job_site_1', name: 'Golden Gate Retrofit', address: 'Presidio, San Francisco, CA', latitude: 37.819929, longitude: -122.478255, radius: 1609, createdAt: new Date() },
-    { id: 'job_site_2', name: 'Downtown Highrise Site', address: '101 California St, San Francisco, CA', latitude: 37.793230, longitude: -122.399580, radius: 1609, createdAt: new Date() },
-    { id: 'job_site_3', name: 'SFO Airport Hangar Base', address: 'SFO Airport, San Francisco, CA', latitude: 37.621313, longitude: -122.378955, radius: 1609, createdAt: new Date() }
-  ];
-
-  const seedDefaultSites = async () => {
-    for (const site of DEFAULT_SITES) {
-      await setDoc(doc(db, 'jobs', site.id), site);
-    }
-  };
 
   // Close export dropdown when clicking outside
   useEffect(() => {
@@ -199,18 +221,10 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     });
 
     const unsubscribeJobs = onSnapshot(collection(db, 'jobs'), (snapshot) => {
-      if (snapshot.empty) {
-        // Seed defaults to Firestore so both admin and employees share the same data source.
-        // Once written, the snapshot will re-fire with the real documents.
-        seedDefaultSites();
-        setJobs(DEFAULT_SITES);
-      } else {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as JobSite));
-        setJobs(data);
-      }
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as JobSite));
+      setJobs(data);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'jobs');
-      setJobs(DEFAULT_SITES); // show fallback in UI on permission error
     });
 
     const unsubscribeSettings = onSnapshot(collection(db, 'settings'), (snapshot) => {
@@ -259,6 +273,14 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       setPendingEmployees([]);
     });
 
+    const unsubscribeCostCodes = onSnapshot(collection(db, 'cost_codes'), (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CostCode));
+      data.sort((a, b) => a.code.localeCompare(b.code));
+      setCostCodes(data);
+    }, () => {
+      setCostCodes([]);
+    });
+
     return () => {
       unsubscribeEntries();
       unsubscribeJobs();
@@ -266,6 +288,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       unsubscribeUsers();
       unsubscribeTimeOff();
       unsubscribePending();
+      unsubscribeCostCodes();
     };
   }, []);
 
@@ -332,6 +355,25 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     } catch (err) {
       console.error(err);
       alert('Rejection failed.');
+    }
+  };
+
+  const handleForceClockOut = async (entry: TimeEntry) => {
+    if (!confirm(`Force clock-out ${entry.employeeName} at 6:00 PM on ${entry.date}?`)) return;
+    try {
+      const [y, m, d] = entry.date.split('-').map(Number);
+      const clockOut = new Date(y, m - 1, d, 18, 0, 0, 0);
+      await updateDoc(doc(db, 'time_entries', entry.id), {
+        status: 'completed',
+        clockOutTime: clockOut,
+        clockOutCoords: entry.clockInCoords ?? null,
+        travelTimeOut: entry.travelTimeOut ?? 0,
+        updatedAt: new Date(),
+      });
+      triggerToast(`${entry.employeeName} clocked out at 6:00 PM on ${entry.date}.`);
+    } catch (err) {
+      console.error(err);
+      alert('Force clock-out failed.');
     }
   };
 
@@ -428,26 +470,73 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       alert('Please fill out name and address info.');
       return;
     }
-
     try {
-      const jobId = 'job_' + Date.now();
-      await setDoc(doc(db, 'jobs', jobId), {
-        id: jobId,
-        name: newJobName,
-        address: newJobAddress,
-        latitude: Number(newJobLat) || 37.77,
-        longitude: Number(newJobLng) || -122.41,
-        radius: Number(newJobRadius) || 100,
-        createdAt: new Date()
-      });
-
+      if (editJobId) {
+        await updateDoc(doc(db, 'jobs', editJobId), {
+          name: newJobName.trim(),
+          address: newJobAddress.trim(),
+          latitude: Number(newJobLat),
+          longitude: Number(newJobLng),
+          radius: Number(newJobRadius) || 100,
+        });
+        setEditJobId(null);
+        triggerToast('Job site updated.');
+      } else {
+        const jobId = 'job_' + Date.now();
+        await setDoc(doc(db, 'jobs', jobId), {
+          id: jobId,
+          name: newJobName.trim(),
+          address: newJobAddress.trim(),
+          latitude: Number(newJobLat) || 37.77,
+          longitude: Number(newJobLng) || -122.41,
+          radius: Number(newJobRadius) || 100,
+          createdAt: new Date()
+        });
+        triggerToast('New Job Site added to network list!');
+      }
       setNewJobName('');
       setNewJobAddress('');
-      triggerToast('New Job Site added to network list!');
+      setNewJobLat(37.774929);
+      setNewJobLng(-122.419416);
+      setNewJobRadius(1609);
+      setJobAddressSuggestions([]);
     } catch (err) {
       console.error(err);
-      alert('Failed to register Job site.');
+      alert('Failed to save job site.');
     }
+  };
+
+  const startEditJob = (j: JobSite) => {
+    setEditJobId(j.id);
+    setNewJobName(j.name);
+    setNewJobAddress(j.address);
+    setNewJobLat(j.latitude);
+    setNewJobLng(j.longitude);
+    setNewJobRadius(j.radius);
+    setJobAddressSuggestions([]);
+    document.getElementById('jobs-creator-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleJobAddressInput = (value: string) => {
+    setNewJobAddress(value);
+    if (jobAddressTimeoutRef.current) clearTimeout(jobAddressTimeoutRef.current);
+    if (value.length < 3) { setJobAddressSuggestions([]); return; }
+    jobAddressTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=5`);
+        const json = await res.json();
+        setJobAddressSuggestions(json.features || []);
+      } catch { setJobAddressSuggestions([]); }
+    }, 350);
+  };
+
+  const handleSelectJobAddress = (feature: any) => {
+    const p = feature.properties;
+    const parts = [p.name, p.street, p.city, p.state, p.country].filter(Boolean);
+    setNewJobAddress(parts.join(', '));
+    setNewJobLat(feature.geometry.coordinates[1]);
+    setNewJobLng(feature.geometry.coordinates[0]);
+    setJobAddressSuggestions([]);
   };
 
   const handleDeleteJob = async (id: string) => {
@@ -610,6 +699,167 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     }
   };
 
+  // Cost code helpers
+  const resetCcForm = () => {
+    setCcEditId(null);
+    setCcCode('');
+    setCcDescription('');
+    setCcDivision('');
+    setCcCostType('Labor');
+    setCcUnit('HR');
+    setCcBillable(true);
+    setCcActive(true);
+    setCcIsGlobal(true);
+    setCcJobId('');
+    setCcNotes('');
+  };
+
+  const startEditCc = (code: CostCode) => {
+    setCcEditId(code.id);
+    setCcCode(code.code);
+    setCcDescription(code.description);
+    setCcDivision(code.division || '');
+    setCcCostType(code.costType);
+    setCcUnit(code.unit);
+    setCcBillable(code.billable);
+    setCcActive(code.active);
+    setCcIsGlobal(code.isGlobal);
+    setCcJobId(code.jobId || '');
+    setCcNotes(code.notes || '');
+    setCcFormOpen(true);
+    document.getElementById('cc-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleSaveCostCode = async () => {
+    if (!ccCode.trim() || !ccDescription.trim()) {
+      triggerToast('Code and description are required.');
+      return;
+    }
+    if (!ccIsGlobal && !ccJobId) {
+      triggerToast('Select a job for project-specific codes.');
+      return;
+    }
+    const jobName = !ccIsGlobal ? (jobs.find(j => j.id === ccJobId)?.name || '') : undefined;
+    const payload: Omit<CostCode, 'id' | 'createdAt'> & { createdAt?: any } = {
+      code: ccCode.trim().toUpperCase(),
+      description: ccDescription.trim(),
+      ...(ccDivision.trim() && { division: ccDivision.trim() }),
+      costType: ccCostType,
+      unit: ccUnit,
+      billable: ccBillable,
+      active: ccActive,
+      isGlobal: ccIsGlobal,
+      ...((!ccIsGlobal && ccJobId) && { jobId: ccJobId, jobName }),
+      ...(ccNotes.trim() && { notes: ccNotes.trim() }),
+      updatedAt: new Date(),
+    };
+    try {
+      if (ccEditId) {
+        await updateDoc(doc(db, 'cost_codes', ccEditId), payload);
+        triggerToast('Cost code updated.');
+      } else {
+        await addDoc(collection(db, 'cost_codes'), { ...payload, createdAt: new Date() });
+        triggerToast('Cost code added!');
+      }
+      setCcFormOpen(false);
+      resetCcForm();
+    } catch (err) {
+      console.error(err);
+      triggerToast('Error saving cost code.');
+    }
+  };
+
+  const handleDeleteCostCode = async (id: string) => {
+    if (!confirm('Delete this cost code? This cannot be undone.')) return;
+    try {
+      await deleteDoc(doc(db, 'cost_codes', id));
+      triggerToast('Cost code deleted.');
+    } catch (err) {
+      console.error(err);
+      triggerToast('Error deleting cost code.');
+    }
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = ev.target?.result;
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as any[];
+
+        const get = (row: any, keys: string[]) => {
+          for (const k of keys) {
+            const found = Object.keys(row).find(rk => rk.toLowerCase().replace(/[\s_-]/g, '') === k.toLowerCase().replace(/[\s_-]/g, ''));
+            if (found !== undefined && row[found] !== '') return String(row[found]).trim();
+          }
+          return '';
+        };
+        const parseBool = (val: string, def: boolean) =>
+          val === '' ? def : ['true', 'yes', '1', 'y'].includes(val.toLowerCase());
+        const validTypes: CostCodeType[] = ['Labor', 'Materials', 'Equipment', 'Subcontractor', 'Other'];
+        const validUnits: CostCodeUnit[] = ['HR', 'SQFT', 'CY', 'TON', 'LS', 'EA', 'LF', 'SF', 'DAY', 'GAL'];
+
+        const parsed = raw.map(row => {
+          const typeRaw = get(row, ['costtype', 'type', 'cost_type']);
+          const unitRaw = get(row, ['unit']).toUpperCase();
+          return {
+            code: get(row, ['code', 'code_id', 'codeid']).toUpperCase(),
+            description: get(row, ['description', 'desc', 'name']),
+            division: get(row, ['division', 'category', 'div']) || undefined,
+            costType: (validTypes.find(t => t.toLowerCase() === typeRaw.toLowerCase()) ?? 'Labor') as CostCodeType,
+            unit: (validUnits.includes(unitRaw as CostCodeUnit) ? unitRaw : 'HR') as CostCodeUnit,
+            billable: parseBool(get(row, ['billable']), true),
+            active: parseBool(get(row, ['active']), true),
+            isGlobal: parseBool(get(row, ['isglobal', 'global']), true),
+            notes: get(row, ['notes', 'note', 'comment']) || undefined,
+          } as Partial<CostCode>;
+        }).filter(r => r.code && r.description);
+
+        if (parsed.length === 0) {
+          triggerToast('No valid rows found. Check that the file has "code" and "description" columns.');
+          return;
+        }
+        setCcImportRows(parsed);
+        setCcImportOpen(true);
+      } catch (err) {
+        console.error(err);
+        triggerToast('Error reading file. Make sure it is a valid CSV or Excel file.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmImport = async () => {
+    setCcImportLoading(true);
+    try {
+      await Promise.all(ccImportRows.map(row =>
+        addDoc(collection(db, 'cost_codes'), { ...row, createdAt: new Date(), updatedAt: new Date() })
+      ));
+      triggerToast(`${ccImportRows.length} cost codes imported!`);
+      setCcImportOpen(false);
+      setCcImportRows([]);
+    } catch (err) {
+      console.error(err);
+      triggerToast('Import failed. Please try again.');
+    }
+    setCcImportLoading(false);
+  };
+
+  const ccTypeColor = (type: CostCodeType) => {
+    switch (type) {
+      case 'Labor':        return 'bg-blue-50 border-blue-100 text-blue-700';
+      case 'Materials':    return 'bg-amber-50 border-amber-100 text-amber-700';
+      case 'Equipment':    return 'bg-purple-50 border-purple-100 text-purple-700';
+      case 'Subcontractor': return 'bg-red-50 border-red-100 text-red-700';
+      default:             return 'bg-gray-50 border-gray-100 text-gray-600';
+    }
+  };
+
   // Build name → hourly rate map from registered employees
   const getRateMap = (): EmployeeRateMap => {
     const map: EmployeeRateMap = {};
@@ -706,6 +956,22 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       </div>
     );
   };
+
+  // Cost codes filtered + paginated
+  const ccFiltered = costCodes
+    .filter(c => {
+      if (!ccSearch) return true;
+      const q = ccSearch.toLowerCase();
+      return (
+        c.code.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q) ||
+        (c.division || '').toLowerCase().includes(q) ||
+        (c.jobName || '').toLowerCase().includes(q)
+      );
+    });
+  const ccTotalPages = Math.max(1, Math.ceil(ccFiltered.length / CC_PAGE_SIZE));
+  const ccOffset = (ccPage - 1) * CC_PAGE_SIZE;
+  const ccPageItems = ccFiltered.slice(ccOffset, ccOffset + CC_PAGE_SIZE);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6" id="admin-dashboard-wrapper">
@@ -1422,21 +1688,33 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                               "{e.description}"
                             </td>
                             <td className="px-4 py-4 text-center">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedLocationId(isExpanded ? null : e.id)}
-                                disabled={!hasCoords}
-                                title={hasCoords ? 'View location history' : 'No GPS data'}
-                                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                                  isExpanded
-                                    ? 'bg-orange-100 text-orange-700'
-                                    : hasCoords
-                                      ? 'text-gray-400 hover:bg-orange-50 hover:text-orange-600'
-                                      : 'text-gray-200 cursor-not-allowed'
-                                }`}
-                              >
-                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
-                              </button>
+                              <div className="flex items-center justify-center gap-1">
+                                {e.status === 'active' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleForceClockOut(e)}
+                                    title={`Force clock-out ${e.employeeName} at 6:00 PM on ${e.date}`}
+                                    className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-all cursor-pointer"
+                                  >
+                                    <LogOut className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedLocationId(isExpanded ? null : e.id)}
+                                  disabled={!hasCoords}
+                                  title={hasCoords ? 'View location history' : 'No GPS data'}
+                                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                    isExpanded
+                                      ? 'bg-orange-100 text-orange-700'
+                                      : hasCoords
+                                        ? 'text-gray-400 hover:bg-orange-50 hover:text-orange-600'
+                                        : 'text-gray-200 cursor-not-allowed'
+                                  }`}
+                                >
+                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                           {isExpanded && (
@@ -1458,15 +1736,309 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
       </div>{/* end main reporting area */}
 
+      {/* Cost Codes Management */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="cc-section">
+        <div className="flex items-center justify-between pb-2 border-b border-gray-100 flex-wrap gap-2">
+          <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 flex items-center gap-1.5">
+            <Tag className="w-4 h-4 text-gray-400" />
+            Cost Codes
+            <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500 normal-case font-normal tracking-normal ml-1">{costCodes.length} total</span>
+          </h3>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => ccFileRef.current?.click()}
+              className="flex items-center gap-1 text-gray-600 hover:text-orange-600 border border-gray-200 hover:border-orange-300 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-all cursor-pointer bg-white"
+              title="Import from CSV or Excel"
+            >
+              <Upload className="w-3 h-3" />
+              Import
+            </button>
+            <input
+              ref={ccFileRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+            <button
+              type="button"
+              onClick={() => { resetCcForm(); setCcFormOpen(v => !v); }}
+              className="flex items-center gap-1 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all cursor-pointer active:translate-y-px"
+            >
+              <Plus className="w-3 h-3" />
+              {ccFormOpen && !ccEditId ? 'Cancel' : 'Add Code'}
+            </button>
+          </div>
+        </div>
+
+        {/* Add / Edit Form */}
+        {ccFormOpen && (
+          <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 space-y-3">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-orange-700 mb-1">
+              {ccEditId ? 'Edit Cost Code' : 'New Cost Code'}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Code Identifier *</label>
+                <input
+                  value={ccCode}
+                  onChange={e => setCcCode(e.target.value)}
+                  placeholder="03-210-L"
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Division / Category</label>
+                <input
+                  value={ccDivision}
+                  onChange={e => setCcDivision(e.target.value)}
+                  placeholder="03 - Concrete"
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] text-gray-500 mb-1">Description *</label>
+                <input
+                  value={ccDescription}
+                  onChange={e => setCcDescription(e.target.value)}
+                  placeholder="Concrete - Cast-in-Place - Labor"
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Cost Type *</label>
+                <select
+                  value={ccCostType}
+                  onChange={e => setCcCostType(e.target.value as CostCodeType)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:border-orange-500"
+                >
+                  {(['Labor', 'Materials', 'Equipment', 'Subcontractor', 'Other'] as CostCodeType[]).map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Unit *</label>
+                <select
+                  value={ccUnit}
+                  onChange={e => setCcUnit(e.target.value as CostCodeUnit)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:border-orange-500"
+                >
+                  {(['HR', 'SQFT', 'CY', 'TON', 'LS', 'EA', 'LF', 'SF', 'DAY', 'GAL'] as CostCodeUnit[]).map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] text-gray-500 mb-1">Notes</label>
+                <input
+                  value={ccNotes}
+                  onChange={e => setCcNotes(e.target.value)}
+                  placeholder="Optional notes..."
+                  className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <div className="col-span-2 flex flex-wrap gap-5 pt-1">
+                {[
+                  { label: 'Billable', checked: ccBillable, set: setCcBillable },
+                  { label: 'Active', checked: ccActive, set: setCcActive },
+                  { label: 'Global (all jobs)', checked: ccIsGlobal, set: (v: boolean) => { setCcIsGlobal(v); if (v) setCcJobId(''); } },
+                ].map(({ label, checked, set }) => (
+                  <label key={label} className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <div
+                      onClick={() => set(!checked)}
+                      className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${checked ? 'bg-orange-600 border-orange-600' : 'bg-white border-gray-300'}`}
+                    >
+                      {checked && <svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                    </div>
+                    <span className="text-[10px] text-gray-600">{label}</span>
+                  </label>
+                ))}
+              </div>
+              {!ccIsGlobal && (
+                <div className="col-span-2">
+                  <label className="block text-[10px] text-gray-500 mb-1">Assign to Job *</label>
+                  <select
+                    value={ccJobId}
+                    onChange={e => setCcJobId(e.target.value)}
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 rounded-lg focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="">Select job site...</option>
+                    {jobs.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleSaveCostCode}
+                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold py-2 px-3 rounded-lg transition-all cursor-pointer active:translate-y-px"
+              >
+                {ccEditId ? 'Save Changes' : 'Add Cost Code'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setCcFormOpen(false); resetCcForm(); }}
+                className="px-4 py-2 text-[10px] text-gray-600 hover:bg-orange-100 rounded-lg cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2">
+          <div className="relative flex-1 min-w-[140px]">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+            <input
+              value={ccSearch}
+              onChange={e => { setCcSearch(e.target.value); setCcPage(1); }}
+              placeholder="Search codes, descriptions..."
+              className="w-full pl-6 pr-2 py-1.5 bg-white border border-gray-200 text-xs rounded-lg focus:outline-none focus:border-orange-500"
+            />
+          </div>
+        </div>
+
+        {/* List */}
+        {ccFiltered.length === 0 ? (
+          <div className="text-center py-8 text-xs text-gray-400 italic">
+            {costCodes.length === 0
+              ? 'No cost codes yet. Click "Add Code" to create your first.'
+              : 'No codes match the current filters.'}
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <div className="hidden md:grid md:grid-cols-[100px_1fr_100px_60px_70px_60px] gap-2 px-2 pb-1.5 border-b border-gray-100 text-[9px] uppercase tracking-wider text-gray-400 font-semibold">
+              <span>Code</span>
+              <span>Description</span>
+              <span>Type</span>
+              <span>Unit</span>
+              <span>Status</span>
+              <span></span>
+            </div>
+            {ccPageItems.map(code => (
+              <div
+                key={code.id}
+                className={`grid grid-cols-[1fr_auto] md:grid-cols-[100px_1fr_100px_60px_70px_60px] gap-2 items-center px-2 py-2 rounded-xl hover:bg-gray-50 transition-colors ${!code.active ? 'opacity-50' : ''}`}
+              >
+                {/* Code + scope */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-mono font-bold text-[11px] text-gray-800">{code.code}</span>
+                  {!code.isGlobal && (
+                    <span className="text-[8px] bg-blue-50 border border-blue-100 text-blue-600 px-1 py-0.5 rounded w-fit">
+                      {code.jobName || jobs.find(j => j.id === code.jobId)?.name || 'Project'}
+                    </span>
+                  )}
+                  {code.isGlobal && (
+                    <span className="text-[8px] bg-gray-50 border border-gray-100 text-gray-500 px-1 py-0.5 rounded w-fit">Global</span>
+                  )}
+                </div>
+                {/* Description + division */}
+                <div className="min-w-0 hidden md:block">
+                  <div className="text-xs text-gray-700 truncate">{code.description}</div>
+                  {code.division && <div className="text-[10px] text-gray-400 truncate">{code.division}</div>}
+                  {code.notes && <div className="text-[9px] text-gray-400 truncate italic">{code.notes}</div>}
+                </div>
+                {/* Type badge */}
+                <span className={`hidden md:inline-flex text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border w-fit ${ccTypeColor(code.costType)}`}>
+                  {code.costType}
+                </span>
+                {/* Unit */}
+                <span className="hidden md:block text-[10px] font-mono text-gray-500">{code.unit}</span>
+                {/* Billable + active */}
+                <div className="hidden md:flex items-center gap-1.5">
+                  <span className={`text-[9px] font-bold ${code.billable ? 'text-green-600' : 'text-gray-400'}`}>{code.billable ? 'Billable' : 'Non-Bill'}</span>
+                </div>
+                {/* Edit / Delete */}
+                <div className="flex items-center gap-1 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => startEditCc(code)}
+                    className="text-gray-400 hover:text-orange-600 p-1 rounded cursor-pointer transition-colors"
+                    title="Edit"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCostCode(code.id)}
+                    className="text-gray-400 hover:text-red-500 p-1 rounded cursor-pointer transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {/* Mobile-only description row */}
+                <div className="col-span-2 md:hidden text-[10px] text-gray-500 -mt-1 pb-1 border-b border-gray-50">
+                  <div className="truncate">{code.description}</div>
+                  <div className="flex gap-2 mt-0.5">
+                    <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded border ${ccTypeColor(code.costType)}`}>{code.costType}</span>
+                    <span className="text-[8px] font-mono text-gray-400">{code.unit}</span>
+                    {code.billable && <span className="text-[8px] text-green-600 font-bold">Billable</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {ccTotalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <span className="text-[10px] text-gray-400">
+              Showing {ccOffset + 1}–{Math.min(ccOffset + CC_PAGE_SIZE, ccFiltered.length)} of {ccFiltered.length}
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                disabled={ccPage === 1}
+                onClick={() => setCcPage(v => v - 1)}
+                className="px-2.5 py-1 text-[10px] border border-gray-200 rounded-lg disabled:opacity-40 cursor-pointer hover:bg-gray-50 transition-colors"
+              >
+                Prev
+              </button>
+              <span className="px-2.5 py-1 text-[10px] text-gray-500">{ccPage} / {ccTotalPages}</span>
+              <button
+                type="button"
+                disabled={ccPage >= ccTotalPages}
+                onClick={() => setCcPage(v => v + 1)}
+                className="px-2.5 py-1 text-[10px] border border-gray-200 rounded-lg disabled:opacity-40 cursor-pointer hover:bg-gray-50 transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Bottom Admin Tools — Register Site, Add Employee, Pending Invites, Operational Parameters */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
         {/* 1. Register Site Location + Managed Locations */}
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4" id="jobs-creator-card">
-          <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
-            <MapPin className="w-4 h-4 text-gray-400" />
-            Register Site Location
-          </h3>
+          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+            <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              {editJobId ? 'Edit Site Location' : 'Register Site Location'}
+            </h3>
+            {editJobId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditJobId(null);
+                  setNewJobName(''); setNewJobAddress('');
+                  setNewJobLat(37.774929); setNewJobLng(-122.419416); setNewJobRadius(1609);
+                  setJobAddressSuggestions([]);
+                }}
+                className="text-[10px] text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
 
           <form onSubmit={handleCreateJob} className="space-y-3">
             <div>
@@ -1484,15 +2056,37 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
             <div>
               <label className="block text-[10.5px] text-gray-500 mb-1">Physical Address</label>
-              <input
-                type="text"
-                required
-                placeholder="Street and City coordinates"
-                value={newJobAddress}
-                onChange={(e) => setNewJobAddress(e.target.value)}
-                className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
-                id="new-job-address"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="Start typing an address..."
+                  value={newJobAddress}
+                  onChange={(e) => handleJobAddressInput(e.target.value)}
+                  onBlur={() => setTimeout(() => setJobAddressSuggestions([]), 150)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:border-orange-500"
+                  id="new-job-address"
+                />
+                {jobAddressSuggestions.length > 0 && (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {jobAddressSuggestions.map((f, i) => {
+                      const p = f.properties;
+                      const label = [p.name, p.street, p.city, p.state, p.country].filter(Boolean).join(', ');
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onMouseDown={() => handleSelectJobAddress(f)}
+                          className="w-full text-left px-3 py-2 text-[10.5px] text-gray-700 hover:bg-orange-50 hover:text-orange-700 border-b border-gray-50 last:border-0 cursor-pointer"
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <p className="text-[9px] text-gray-400 mt-0.5">Selecting a suggestion auto-fills the GPS coordinates below.</p>
             </div>
 
             <div className="space-y-1.5">
@@ -1562,8 +2156,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
               className="w-full bg-green-600 hover:bg-green-700 active:translate-y-px text-xs text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
               id="sumbit-new-job-btn"
             >
-              <Plus className="w-4 h-4" />
-              Register Site
+              {editJobId ? <><Pencil className="w-3.5 h-3.5" /> Save Changes</> : <><Plus className="w-4 h-4" /> Register Site</>}
             </button>
           </form>
 
@@ -1582,15 +2175,34 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                     <span className="text-[8.5px] font-mono text-gray-400 block">
                       Coords: {j.latitude?.toFixed(4)}, {j.longitude?.toFixed(4)} (±{j.radius}m)
                     </span>
+                    {costCodes.filter(c => c.jobId === j.id).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setCcSearch(j.name); document.getElementById('cc-section')?.scrollIntoView({ behavior: 'smooth' }); }}
+                        className="text-[8px] bg-blue-50 border border-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-bold cursor-pointer hover:bg-blue-100 transition-colors"
+                      >
+                        {costCodes.filter(c => c.jobId === j.id).length} project code{costCodes.filter(c => c.jobId === j.id).length !== 1 ? 's' : ''}
+                      </button>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteJob(j.id)}
-                    className="text-red-500 hover:bg-red-50 p-1 rounded-lg shrink-0 transition-all cursor-pointer"
-                    title="Remove Job"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => startEditJob(j)}
+                      className="text-gray-400 hover:text-orange-600 hover:bg-orange-50 p-1 rounded-lg transition-all cursor-pointer"
+                      title="Edit Site"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteJob(j.id)}
+                      className="text-red-500 hover:bg-red-50 p-1 rounded-lg transition-all cursor-pointer"
+                      title="Remove Job"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1801,8 +2413,8 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
 
       </div>{/* end bottom admin tools grid */}
 
-      {/* Employee Account Passwords */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+      {/* Employee Account Passwords — visible to Randy only */}
+      {user.email === 'randy@rhaus.me' && <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
             <Lock className="w-4 h-4 text-gray-400" />
@@ -1862,9 +2474,73 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
             </table>
           </div>
         )}
-      </div>
+      </div>}
 
       </> /* end overview tab */}
+
+      {/* Cost Code Import Preview Modal */}
+      {ccImportOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-gray-900">Import Preview</h2>
+                <p className="text-[10px] text-gray-500 mt-0.5">{ccImportRows.length} valid cost codes found — review before importing</p>
+              </div>
+              <button type="button" onClick={() => { setCcImportOpen(false); setCcImportRows([]); }} className="text-gray-400 hover:text-gray-600 cursor-pointer">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-auto flex-1 px-6 py-3">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="text-[9px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
+                    <th className="text-left py-2 pr-4 font-semibold">Code</th>
+                    <th className="text-left py-2 pr-4 font-semibold">Description</th>
+                    <th className="text-left py-2 pr-4 font-semibold">Division</th>
+                    <th className="text-left py-2 pr-4 font-semibold">Type</th>
+                    <th className="text-left py-2 pr-4 font-semibold">Unit</th>
+                    <th className="text-left py-2 font-semibold">Billable</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {ccImportRows.map((r, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="py-1.5 pr-4 font-mono font-bold text-gray-800">{r.code}</td>
+                      <td className="py-1.5 pr-4 text-gray-700 max-w-[200px] truncate">{r.description}</td>
+                      <td className="py-1.5 pr-4 text-gray-500 text-[10px]">{r.division || '—'}</td>
+                      <td className="py-1.5 pr-4">
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${ccTypeColor(r.costType as CostCodeType)}`}>{r.costType}</span>
+                      </td>
+                      <td className="py-1.5 pr-4 font-mono text-gray-500">{r.unit}</td>
+                      <td className="py-1.5">
+                        <span className={`text-[9px] font-bold ${r.billable ? 'text-green-600' : 'text-gray-400'}`}>{r.billable ? 'Yes' : 'No'}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+              <button
+                type="button"
+                onClick={handleConfirmImport}
+                disabled={ccImportLoading}
+                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs py-2.5 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+              >
+                {ccImportLoading ? 'Importing...' : `Import All ${ccImportRows.length} Codes`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setCcImportOpen(false); setCcImportRows([]); }}
+                className="px-5 py-2.5 text-xs text-gray-600 hover:bg-gray-100 rounded-xl cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

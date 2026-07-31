@@ -103,6 +103,26 @@ export interface TimeOffRequest {
   updatedAt: any;
 }
 
+export type CostCodeType = 'Labor' | 'Materials' | 'Equipment' | 'Subcontractor' | 'Other';
+export type CostCodeUnit = 'HR' | 'SQFT' | 'CY' | 'TON' | 'LS' | 'EA' | 'LF' | 'SF' | 'DAY' | 'GAL';
+
+export interface CostCode {
+  id: string;
+  code: string;
+  description: string;
+  division?: string;
+  costType: CostCodeType;
+  unit: CostCodeUnit;
+  billable: boolean;
+  active: boolean;
+  isGlobal: boolean;
+  jobId?: string;
+  jobName?: string;
+  notes?: string;
+  createdAt: any;
+  updatedAt: any;
+}
+
 export const COST_CODES = [
   "01-100 Concrete & Pours",
   "02-200 Framing & Lumber",

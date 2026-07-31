@@ -35,7 +35,8 @@ import {
   ChevronDown,
   ChevronUp,
   Plane,
-  Search
+  Search,
+  X
 } from 'lucide-react';
 
 interface EmployeeDashboardProps {
@@ -124,6 +125,8 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   // Active dashboard tab
   const [activeTab, setActiveTab] = useState<'clock' | 'timecards' | 'timeoff'>('clock');
 
+  const [autoClockoutBanner, setAutoClockoutBanner] = useState<{ date: string; hour: number } | null>(null);
+
   // Sync network connection
   useEffect(() => {
     const handleOnline = () => {
@@ -149,23 +152,13 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
 
   // Fetch Job Sites & configuration
   useEffect(() => {
-    const defaultSiteList: JobSite[] = [
-      { id: 'job_site_1', name: 'Golden Gate Retrofit', address: 'Presidio, San Francisco, CA', latitude: 37.819929, longitude: -122.478255, radius: 1609, createdAt: new Date() },
-      { id: 'job_site_2', name: 'Downtown Highrise Site', address: '101 California St, San Francisco, CA', latitude: 37.793230, longitude: -122.399580, radius: 1609, createdAt: new Date() },
-      { id: 'job_site_3', name: 'SFO Airport Hangar Base', address: 'SFO Airport, San Francisco, CA', latitude: 37.621313, longitude: -122.378955, radius: 1609, createdAt: new Date() }
-    ];
-
     const unsubscribeJobs = onSnapshot(collection(db, 'jobs'), (snapshot) => {
       setJobsLoadError(null);
-      if (snapshot.empty) {
-        setJobs(defaultSiteList);
-      } else {
-        const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as JobSite));
-        setJobs(fetched);
-      }
+      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as JobSite));
+      setJobs(fetched);
     }, (err) => {
       console.error("Job sites failed to load from Firestore:", err.code, err.message);
-      setJobsLoadError('Job sites could not be loaded. Firestore rules may need to be deployed. Contact your administrator.');
+      setJobsLoadError('Job sites could not be loaded. Contact your administrator.');
       setJobs([]);
     });
 
@@ -362,7 +355,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     if (isOnline) {
       try {
         await updateDoc(doc(db, 'time_entries', entry.id), updatedData);
-        alert(`You were automatically clocked out at ${autoLogoutHour}:00 PM to protect record integrity.`);
+        setAutoClockoutBanner({ date: entry.date, hour: autoLogoutHour });
       } catch (err) {
         console.error('Auto clock-out sync failed', err);
       }
@@ -897,6 +890,29 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6" id="employee-dashboard-content">
+
+      {/* Auto clock-out notification banner */}
+      {autoClockoutBanner && (
+        <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          <div className="flex-1">
+            <p className="font-semibold">You were automatically clocked out</p>
+            <p className="mt-0.5">
+              Your shift on <span className="font-medium">{autoClockoutBanner.date}</span> was closed at{' '}
+              <span className="font-medium">{autoClockoutBanner.hour}:00</span> because no clock-out was recorded.
+            </p>
+            <p className="mt-1 text-amber-700">
+              If the time is incorrect, go to <strong>My Timecards</strong>, find the entry, and use{' '}
+              <strong>Manual Adjustment</strong> to correct it — or contact your manager.
+            </p>
+          </div>
+          <button
+            onClick={() => setAutoClockoutBanner(null)}
+            className="mt-0.5 text-amber-500 hover:text-amber-700 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#1c0a00] p-5 rounded-2xl mb-6 shadow-md">

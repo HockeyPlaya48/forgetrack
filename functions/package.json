@@ -1,0 +1,17 @@
+{
+  "name": "forgetrack-functions",
+  "scripts": {
+    "build": "tsc"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
