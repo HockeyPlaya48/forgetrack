@@ -7,7 +7,8 @@ import {
   addDoc,
   updateDoc,
   doc,
-  onSnapshot
+  onSnapshot,
+  serverTimestamp
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth } from '../firebase';
 import { JobSite, TimeEntry, UserProfile, COST_CODES } from '../types';
@@ -73,6 +74,10 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
   // GPS status shown near Clock In button
   const [gpsLoading, setGpsLoading] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // Set when a clock action's Firestore write itself fails (as opposed to GPS)
+  // so a save failure is never silent — the employee sees exactly what to do next.
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Guards the Lunch/Clock-Out buttons while a GPS+Firestore round trip is in flight,
   // so a slow/failed GPS fix (bad signal) can't be double-tapped into a race
@@ -278,7 +283,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
         lunchDuration: (entry.lunchDuration || 0) + 75,
         lunchStart: null,
         lunchStartCoords: null,
-        updatedAt: new Date(),
+        updatedAt: serverTimestamp(),
       };
       try {
         await updateDoc(doc(db, 'time_entries', entry.id), payload);
@@ -360,7 +365,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       status: 'completed',
       description: `${entry.description} (Auto clocked-out at ${autoLogoutHour}:00 PM by security protocol)`,
       travelTimeOut: 0,
-      updatedAt: new Date()
+      updatedAt: serverTimestamp()
     };
 
     if (isOnline) {
@@ -396,12 +401,12 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           await addDoc(collection(db, 'time_entries'), {
             ...item.data,
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: serverTimestamp()
           });
         } else if (item.action === 'update') {
           await updateDoc(doc(db, 'time_entries', item.docId), {
             ...item.data,
-            updatedAt: new Date()
+            updatedAt: serverTimestamp()
           });
         }
       } catch (e) {
@@ -474,7 +479,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       lunchEndCoords: null,
       lunchDuration: (activeEntry.lunchDuration || 0) + diffMins,
       description: updatedDescription,
-      updatedAt: new Date()
+      updatedAt: serverTimestamp()
     };
 
     if (isOnline) {
@@ -519,7 +524,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       costCode: selectedCostCode,
       description: updatedDescription,
       travelTimeOut: Number(travelOut) || 0,
-      updatedAt: new Date()
+      updatedAt: serverTimestamp()
     };
 
     if (isOnline) {
@@ -575,7 +580,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
         isApproved: false,
         editRequestedAt: new Date(),
         createdAt: new Date(),
-        updatedAt: new Date(),
+        updatedAt: serverTimestamp(),
       };
     };
 
@@ -618,7 +623,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       costCode: selectedCostCode,
       description: description,
       travelTimeOut: Number(travelOut) || 0,
-      updatedAt: clockOutNow,
+      updatedAt: serverTimestamp(),
     };
 
     // Step 2: PTO / Unpaid entry for the claimed hours
@@ -650,7 +655,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       isApproved: false,
       editRequestedAt: new Date(),
       createdAt: new Date(),
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     };
 
     try {
@@ -714,7 +719,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       isApproved: false,
       editRequestedAt: null,
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: serverTimestamp()
     };
 
     if (isOnline) {
@@ -736,6 +741,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     setIsClockActionPending(true);
 
     setGpsError(null);
+    setSaveError(null);
     try {
       // Best-effort GPS — store null if unavailable, never block
       let clockOutCoords: { latitude: number; longitude: number } | null = null;
@@ -758,7 +764,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
         costCode: selectedCostCode,
         description: description,
         travelTimeOut: Number(travelOut) || 0,
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       };
 
       if (isOnline) {
@@ -767,7 +773,9 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           setTravelOut(0);
           setDescription('');
         } catch (error) {
-          handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
+          console.error('Clock-out save failed:', error);
+          setSaveError('Your clock-out did not save. Check your connection and tap Clock Out again.');
+          try { handleFirestoreError(error, OperationType.UPDATE, 'time_entries'); } catch { /* already logged above */ }
         }
       } else {
         queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
@@ -786,6 +794,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
     if (!activeEntry || isClockActionPending) return;
     setIsClockActionPending(true);
     setGpsError(null);
+    setSaveError(null);
 
     try {
       if (!activeEntry.lunchStart) {
@@ -805,14 +814,16 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           ...activeEntry,
           lunchStart: new Date(),
           lunchStartCoords,
-          updatedAt: new Date()
+          updatedAt: serverTimestamp()
         };
 
         if (isOnline) {
           try {
             await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
           } catch (error) {
-            handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
+            console.error('Lunch start save failed:', error);
+            setSaveError('Your lunch break did not save. Check your connection and tap the button again.');
+            try { handleFirestoreError(error, OperationType.UPDATE, 'time_entries'); } catch { /* already logged above */ }
           }
         } else {
           queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
@@ -842,14 +853,16 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
           lunchEndCoords,
           lunchDuration: (activeEntry.lunchDuration || 0) + diffMins,
           lunchStart: null,
-          updatedAt: end
+          updatedAt: serverTimestamp()
         };
 
         if (isOnline) {
           try {
             await updateDoc(doc(db, 'time_entries', activeEntry.id), payload);
           } catch (error) {
-            handleFirestoreError(error, OperationType.UPDATE, 'time_entries');
+            console.error('Lunch return save failed:', error);
+            setSaveError('Your lunch return did not save. Check your connection and tap the button again.');
+            try { handleFirestoreError(error, OperationType.UPDATE, 'time_entries'); } catch { /* already logged above */ }
           }
         } else {
           queueOfflineAction({ action: 'update', docId: activeEntry.id, data: payload });
@@ -902,7 +915,7 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
       isApproved: false,
       editRequestedAt: new Date(),
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: serverTimestamp()
     };
 
     if (isOnline) {
@@ -1059,6 +1072,14 @@ export default function EmployeeDashboard({ user, onSignOut }: EmployeeDashboard
             {/* Check if active timecard exists */}
             {activeEntry ? (
               <div className="space-y-6">
+                {/* Save-failure banner — shown when a clock action's write itself failed */}
+                {saveError && (
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{saveError}</span>
+                  </div>
+                )}
+
                 {/* Active Session Status */}
                 <div className="bg-green-50 rounded-xl p-5 border border-green-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div className="flex items-start gap-3">
