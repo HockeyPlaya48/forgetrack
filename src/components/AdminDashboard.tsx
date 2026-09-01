@@ -51,7 +51,8 @@ import {
   Eye,
   EyeOff,
   Lock,
-  LogOut
+  LogOut,
+  UserPlus
 } from 'lucide-react';
 
 import { UserProfile } from '../types';
@@ -85,7 +86,9 @@ function buildPayPeriods(count = 12) {
 export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps) {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [jobs, setJobs] = useState<JobSite[]>([]);
-  const [autoLogout, setAutoLogout] = useState<string>('18:00');
+  const [autoLogout, setAutoLogout] = useState<string>('18:00'); // legacy
+  const [autoClockOutTriggerHours, setAutoClockOutTriggerHours] = useState<number>(12);
+  const [autoClockOutRevertHours, setAutoClockOutRevertHours] = useState<number>(7.5);
 
   // Create job site fields
   const [newJobName, setNewJobName] = useState('');
@@ -95,7 +98,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   const [newJobRadius, setNewJobRadius] = useState(1609);
 
   // Registered employees for the employee filter dropdown
-  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string; billableRate?: number; homeAddress?: string; homeLatitude?: number; homeLongitude?: number; currentPassword?: string; mustChangePassword?: boolean }[]>([]);
+  const [registeredEmployees, setRegisteredEmployees] = useState<{ uid: string; name: string; email: string; phoneNumber?: string; jobTitle?: string; billableRate?: number; homeAddress?: string; homeLatitude?: number; homeLongitude?: number; currentPassword?: string; mustChangePassword?: boolean }[]>([]);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -124,13 +127,23 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   // Time off requests
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [denyNotes, setDenyNotes] = useState<Record<string, string>>({});
+  const [declineReasons, setDeclineReasons] = useState<Record<string, string>>({});
 
   // Company travel coverage & employee home address editor
   const [companyTravelCoverage, setCompanyTravelCoverage] = useState<number>(30);
+  const [minHoursForTravel, setMinHoursForTravel] = useState<number>(5);
   const [selectedEmpForTravel, setSelectedEmpForTravel] = useState<string>('');
   const [travelHomeAddress, setTravelHomeAddress] = useState<string>('');
   const [travelHomeLat, setTravelHomeLat] = useState<number>(0);
   const [travelHomeLng, setTravelHomeLng] = useState<number>(0);
+  const [editEmpName, setEditEmpName] = useState('');
+  const [editEmpPhone, setEditEmpPhone] = useState('');
+  const [editEmpJobTitle, setEditEmpJobTitle] = useState('');
+  const [editEmpRate, setEditEmpRate] = useState('');
+  const [editEmpPassword, setEditEmpPassword] = useState('');
+  const [showEditEmpPassword, setShowEditEmpPassword] = useState(false);
+  const [editAddressSuggestions, setEditAddressSuggestions] = useState<any[]>([]);
+  const editAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Pre-register employee form
   const [preRegFirstName, setPreRegFirstName] = useState('');
@@ -218,7 +231,10 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       const generalSetCard = snapshot.docs.find(doc => doc.id === 'general');
       if (generalSetCard) {
         setAutoLogout(generalSetCard.data().autoClockOutTime || '18:00');
+        setAutoClockOutTriggerHours(generalSetCard.data().autoClockOutHoursAfterClockIn ?? 12);
+        setAutoClockOutRevertHours(generalSetCard.data().autoClockOutRevertHours ?? 7.5);
         setCompanyTravelCoverage(generalSetCard.data().companyTravelCoverageMinutes ?? 30);
+        setMinHoursForTravel(generalSetCard.data().minHoursForTravelCoverage ?? 5);
       }
     });
 
@@ -229,6 +245,8 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
           uid: d.id,
           name: d.data().name as string,
           email: d.data().email as string,
+          phoneNumber: d.data().phoneNumber as string | undefined,
+          jobTitle: d.data().jobTitle as string | undefined,
           billableRate: d.data().billableRate as number | undefined,
           homeAddress: d.data().homeAddress as string | undefined,
           homeLatitude: d.data().homeLatitude as number | undefined,
@@ -280,13 +298,18 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
     const lunch = entry.lunchDuration || 0;
 
     const workMinutes = Math.max(0, totalMinutes - lunch);
-    const billingMinutes = workMinutes + Number(entry.travelTimeIn || 0) + Number(entry.travelTimeOut || 0);
+    const travelIn = Number(entry.travelTimeIn || 0);
+    const travelOut = Number(entry.travelTimeOut || 0);
+    const qualifiesForTravel = (workMinutes / 60) >= minHoursForTravel && entry.adminIncludesTravel !== false;
+    const companyTravelIn = qualifiesForTravel ? Math.max(0, travelIn - companyTravelCoverage) : 0;
+    const companyTravelOut = qualifiesForTravel ? Math.max(0, travelOut - companyTravelCoverage) : 0;
+    const billingMinutes = workMinutes + companyTravelIn + companyTravelOut;
 
     return {
       worked: (workMinutes / 60),
       billable: (billingMinutes / 60),
       lunch: lunch,
-      travel: (Number(entry.travelTimeIn || 0) + Number(entry.travelTimeOut || 0))
+      travel: travelIn + travelOut
     };
   };
 
@@ -326,13 +349,20 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
   };
 
   const handleDecline = async (id: string) => {
-    if (!confirm('Are you sure you want to delete/reject this manual log request?')) return;
+    const reason = (declineReasons[id] || '').trim();
+    if (!reason) { alert('Please enter a reason before declining.'); return; }
+    if (!confirm('Decline this entry and notify the employee?')) return;
     try {
-      await deleteDoc(doc(db, 'time_entries', id));
-      triggerToast('Time entry rejected / deleted.');
+      await updateDoc(doc(db, 'time_entries', id), {
+        status: 'declined',
+        declineReason: reason,
+        updatedAt: new Date()
+      });
+      setDeclineReasons(prev => { const n = { ...prev }; delete n[id]; return n; });
+      triggerToast('Time entry declined. Employee can resubmit.');
     } catch (err) {
       console.error(err);
-      alert('Rejection failed.');
+      alert('Decline failed.');
     }
   };
 
@@ -488,7 +518,10 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       await setDoc(doc(db, 'settings', 'general'), {
         id: 'general',
         autoClockOutTime: autoLogout,
+        autoClockOutHoursAfterClockIn: Number(autoClockOutTriggerHours) || 12,
+        autoClockOutRevertHours: Number(autoClockOutRevertHours) || 7.5,
         companyTravelCoverageMinutes: Number(companyTravelCoverage) || 30,
+        minHoursForTravelCoverage: Number(minHoursForTravel) || 5,
         updatedAt: new Date()
       });
       triggerToast('Settings saved.');
@@ -510,27 +543,78 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
       setTravelHomeAddress(emp.homeAddress || '');
       setTravelHomeLat(emp.homeLatitude || 0);
       setTravelHomeLng(emp.homeLongitude || 0);
+      setEditEmpName(emp.name || '');
+      setEditEmpPhone(emp.phoneNumber || '');
+      setEditEmpJobTitle(emp.jobTitle || '');
+      setEditEmpRate(emp.billableRate != null ? String(emp.billableRate) : '');
+      setEditEmpPassword('');
     } else {
       setTravelHomeAddress('');
       setTravelHomeLat(0);
       setTravelHomeLng(0);
+      setEditEmpName('');
+      setEditEmpPhone('');
+      setEditEmpJobTitle('');
+      setEditEmpRate('');
+      setEditEmpPassword('');
     }
   }, [selectedEmpForTravel, registeredEmployees]);
 
-  const handleSaveEmployeeTravel = async () => {
+  const handleSaveEditEmployee = async () => {
     if (!selectedEmpForTravel) return;
     try {
-      await updateDoc(doc(db, 'users', selectedEmpForTravel), {
+      const update: Record<string, any> = {
         homeAddress: travelHomeAddress.trim(),
         homeLatitude: Number(travelHomeLat) || 0,
         homeLongitude: Number(travelHomeLng) || 0,
-      });
-      triggerToast('Employee home address updated.');
+        name: editEmpName.trim() || '',
+        phoneNumber: editEmpPhone.trim() || '',
+        jobTitle: editEmpJobTitle.trim() || '',
+      };
+      if (editEmpRate !== '') update.billableRate = Number(editEmpRate) || 0;
+      if (editEmpPassword.trim()) {
+        if (editEmpPassword.trim().length < 6) { alert('Password must be at least 6 characters.'); return; }
+        update.currentPassword = editEmpPassword.trim();
+        update.mustChangePassword = true;
+      }
+      await updateDoc(doc(db, 'users', selectedEmpForTravel), update);
+      setSelectedEmpForTravel('');
+      setEditEmpPassword('');
+      triggerToast('Employee profile updated.');
     } catch (err) {
       console.error(err);
-      alert('Failed to update employee travel profile.');
+      alert('Failed to update employee profile.');
     }
   };
+
+  const handleEditAddressInput = (value: string) => {
+    setTravelHomeAddress(value);
+    if (editAddressTimeoutRef.current) clearTimeout(editAddressTimeoutRef.current);
+    if (value.length < 3) { setEditAddressSuggestions([]); return; }
+    editAddressTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=5`);
+        const data = await res.json();
+        setEditAddressSuggestions(data.features || []);
+      } catch { setEditAddressSuggestions([]); }
+    }, 350);
+  };
+
+  const handleEditSelectAddress = (feature: any) => {
+    const p = feature.properties;
+    const parts = [
+      p.housenumber && p.street ? `${p.housenumber} ${p.street}` : (p.street || p.name),
+      p.city || p.county,
+      p.state,
+      p.postcode,
+    ].filter(Boolean);
+    setTravelHomeAddress(parts.join(', '));
+    setTravelHomeLat(parseFloat(feature.geometry.coordinates[1].toFixed(6)));
+    setTravelHomeLng(parseFloat(feature.geometry.coordinates[0].toFixed(6)));
+    setEditAddressSuggestions([]);
+  };
+
+  const handleSaveEmployeeTravel = handleSaveEditEmployee;
 
   // Create a full employee account (Firebase Auth + Firestore users doc)
   const handlePreRegisterEmployee = async (e: React.FormEvent) => {
@@ -842,7 +926,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
           <div>
             <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500">Pending Approvals</span>
             <h2 className="text-2xl font-black text-amber-600 mt-1 font-mono">
-              {entries.filter(e => e.status !== 'active' && !e.isApproved).length} Timecards
+              {entries.filter(e => e.status !== 'active' && e.status !== 'declined' && !e.isApproved).length} Timecards
             </h2>
             <p className="text-[10.5px] text-gray-500 mt-1">GPS-verified and manual entries awaiting review.</p>
           </div>
@@ -914,11 +998,6 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                           <span>{req.hoursPerDay}h/day</span>
                         </div>
 
-                        {/* Reason */}
-                        <p className="italic text-gray-600 leading-relaxed border-t border-gray-100 pt-2">
-                          "{req.reason}"
-                        </p>
-
                         {/* Deny note input */}
                         <div>
                           <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">
@@ -969,7 +1048,7 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                   Timecard Approvals — Awaiting Review
                 </h2>
                 <span className="text-xs font-bold bg-amber-200 text-amber-800 px-3 py-1 rounded-full">
-                  {entries.filter(e => e.status !== 'active' && !e.isApproved).length} pending
+                  {entries.filter(e => e.status !== 'active' && e.status !== 'declined' && !e.isApproved).length} pending
                 </span>
               </div>
 
@@ -1031,9 +1110,33 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                           <div>Cost: <span className="text-gray-700">{item.costCode.split(' ')[0]}</span></div>
                           <div>Clock-in: <span className="text-gray-700">{item.clockInTime?.seconds ? new Date(item.clockInTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span></div>
                           <div>Regular: <span className="text-orange-600 font-extrabold">{data.worked.toFixed(2)} hrs</span></div>
-                          {(item.travelTimeIn + item.travelTimeOut) > 0 && (
-                            <div>Travel: <span className="text-gray-500">{item.travelTimeIn + item.travelTimeOut}m</span></div>
+                          {item.description?.includes('[Manual Clock-Out:') && (
+                            <div className="col-span-2 flex items-center gap-1 text-amber-700">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              Manual clock-out submitted from:{' '}
+                              {item.clockOutCoords
+                                ? <span className={isOffSite(item.clockOutCoords) ? 'text-red-600 font-semibold' : 'text-green-700 font-semibold'}>
+                                    {isOffSite(item.clockOutCoords) ? 'off-site' : 'on-site'}{' '}
+                                    ({item.clockOutCoords.latitude.toFixed(4)}, {item.clockOutCoords.longitude.toFixed(4)})
+                                  </span>
+                                : <span className="text-gray-400">no GPS captured</span>}
+                            </div>
                           )}
+                          {(item.travelTimeIn > 0 || item.travelTimeOut > 0) && (() => {
+                            const qualifies = data.worked >= minHoursForTravel && item.adminIncludesTravel !== false;
+                            const coTravel = qualifies
+                              ? Math.max(0, (item.travelTimeIn || 0) - companyTravelCoverage) + Math.max(0, (item.travelTimeOut || 0) - companyTravelCoverage)
+                              : 0;
+                            return (
+                              <div className="col-span-2">
+                                Travel (company): {qualifies
+                                  ? coTravel > 0
+                                    ? <span className="text-green-600 font-bold">{coTravel}m</span>
+                                    : <span className="text-gray-400">0m (travel under {companyTravelCoverage}m threshold)</span>
+                                  : <span className="text-gray-400">0m — under {minHoursForTravel}h worked</span>}
+                              </div>
+                            );
+                          })()}
                           {item.lunchDuration > 0 && (
                             <div>Lunch: <span className="text-gray-500">{item.lunchDuration}m</span></div>
                           )}
@@ -1083,24 +1186,51 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                         </div>
                       </div>
 
+                      {/* Off-site travel override — shown when both clock-in and clock-out are off job-site */}
+                      {isOffSite(item.clockInCoords || null) && isOffSite(item.clockOutCoords || null) && (
+                        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          <input
+                            type="checkbox"
+                            id={`travel-${item.id}`}
+                            checked={item.adminIncludesTravel !== false}
+                            onChange={async (e) => {
+                              await updateDoc(doc(db, 'time_entries', item.id), { adminIncludesTravel: e.target.checked, updatedAt: new Date() });
+                            }}
+                            className="w-3.5 h-3.5 cursor-pointer accent-orange-600"
+                          />
+                          <label htmlFor={`travel-${item.id}`} className="text-[10.5px] text-amber-700 font-semibold cursor-pointer">
+                            Include travel pay (both clock-in &amp; out are off-site)
+                          </label>
+                        </div>
+                      )}
+
                       {/* Action buttons */}
-                      <div className="flex gap-2 pt-2 border-t border-gray-100">
-                        <button
-                          type="button"
-                          onClick={() => handleApprove(item.id)}
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-y-px shadow-sm"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDecline(item.id)}
-                          className="flex-1 bg-white hover:bg-red-50 text-red-600 border border-gray-200 hover:border-red-200 font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-y-px"
-                        >
-                          <XSquare className="w-4 h-4" />
-                          Decline
-                        </button>
+                      <div className="pt-2 border-t border-gray-100 space-y-2">
+                        <input
+                          type="text"
+                          placeholder="Decline reason (required before declining)"
+                          value={declineReasons[item.id] || ''}
+                          onChange={e => setDeclineReasons(prev => ({ ...prev, [item.id]: e.target.value }))}
+                          className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-red-400"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(item.id)}
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-y-px shadow-sm"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDecline(item.id)}
+                            className="flex-1 bg-white hover:bg-red-50 text-red-600 border border-gray-200 hover:border-red-200 font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-y-px"
+                          >
+                            <XSquare className="w-4 h-4" />
+                            Decline
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1396,14 +1526,24 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                       </td>
                     </tr>
                   ) : (
-                    filteredEntries.map((e) => {
+                    [...filteredEntries].sort((a, b) => {
+                      const aActive = a.status === 'active' ? 1 : 0;
+                      const bActive = b.status === 'active' ? 1 : 0;
+                      if (aActive !== bActive) return bActive - aActive;
+                      if (aActive && bActive) {
+                        const aMs = a.clockInTime?.seconds ? a.clockInTime.seconds * 1000 : 0;
+                        const bMs = b.clockInTime?.seconds ? b.clockInTime.seconds * 1000 : 0;
+                        return bMs - aMs;
+                      }
+                      return 0;
+                    }).map((e) => {
                       const stats = getTotals(e);
                       const isExpanded = expandedLocationId === e.id;
                       const hasCoords = e.clockInCoords || e.clockOutCoords;
                       return (
                         <React.Fragment key={e.id}>
                           <tr className={`hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-orange-50/40' : ''}`}>
-                            <td className="px-4 py-4 whitespace-nowrap font-bold text-gray-800">
+                            <td className={`px-4 py-4 whitespace-nowrap font-bold ${e.status === 'active' ? 'text-red-600' : 'text-gray-800'}`}>
                               {e.employeeName}
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap font-mono text-gray-500">
@@ -1437,8 +1577,10 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
                             <td className="px-4 py-4 whitespace-nowrap text-right font-mono font-bold text-gray-800">
                               {stats.worked.toFixed(2)}h / {stats.billable.toFixed(2)}h
                               <div className="text-[9.5px] text-gray-400 font-mono">
-                                Travel: {stats.travel}m | Lunch: {stats.lunch}m
+                                {e.travelTimeIn > 0 && <span>{e.travelFromLabel || 'Home'}→here: {e.travelTimeIn}m</span>}
+                                {e.travelTimeOut > 0 && <span> | here→home: {e.travelTimeOut}m</span>}
                               </div>
+                              {e.lunchDuration > 0 && <div className="text-[9.5px] text-gray-400 font-mono">Lunch: {e.lunchDuration}m</div>}
                             </td>
                             <td className="px-4 py-4 text-gray-500 max-w-xs truncate italic" title={e.description}>
                               "{e.description}"
@@ -1812,19 +1954,35 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
             Operational Parameters
           </h3>
           <div>
-            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Daily Company Auto-Clockout Hour</label>
-            <input type="time" value={autoLogout} onChange={(e) => setAutoLogout(e.target.value)}
-              className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-orange-500" />
+            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Auto Clock-Out Trigger (hours after clock-in)</label>
+            <input type="number" min="1" max="24" step="0.5" value={autoClockOutTriggerHours} onChange={(e) => setAutoClockOutTriggerHours(Number(e.target.value) || 12)}
+              className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-orange-500" />
             <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
-              Workers left clocked in beyond this time will be clipped to this capping limit dynamically.
+              Employees still clocked in after this many hours from clock-in will be automatically clocked out.
             </p>
           </div>
           <div>
-            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Company Travel Coverage (Minutes)</label>
+            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Auto Clock-Out Revert Hours</label>
+            <input type="number" min="1" max="24" step="0.5" value={autoClockOutRevertHours} onChange={(e) => setAutoClockOutRevertHours(Number(e.target.value) || 7.5)}
+              className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-orange-500" />
+            <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
+              When auto clock-out fires, the entry reverts to this many hours. Employees who worked more must submit a correction for approval.
+            </p>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Company Travel Coverage (Minutes Per Direction)</label>
             <input type="number" min="0" max="240" value={companyTravelCoverage} onChange={(e) => setCompanyTravelCoverage(Number(e.target.value) || 0)}
               className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-orange-500" />
             <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
-              Company pays this many travel minutes per shift. Travel beyond this is on the employee.
+              Company covers travel beyond this threshold each way. Employee is responsible for the first N minutes each direction.
+            </p>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Minimum Hours Worked to Qualify for Travel Coverage</label>
+            <input type="number" min="0" max="12" step="0.5" value={minHoursForTravel} onChange={(e) => setMinHoursForTravel(Number(e.target.value) || 0)}
+              className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 font-mono focus:outline-none focus:border-orange-500" />
+            <p className="text-[9.5px] text-gray-400 leading-tight mt-1">
+              Employee must work at least this many hours on-site to qualify for company travel coverage. Below this threshold, all travel is on the employee.
             </p>
           </div>
           <button type="button" onClick={handleSaveSettings}
@@ -1834,6 +1992,122 @@ export default function AdminDashboard({ onSignOut, user }: AdminDashboardProps)
         </div>
 
       </div>{/* end bottom admin tools grid */}
+
+      {/* Edit Employee Profile */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <h3 className="text-xs uppercase font-bold tracking-wider text-gray-600 pb-2 border-b border-gray-100 flex items-center gap-1.5">
+          <UserPlus className="w-4 h-4 text-gray-400" />
+          Edit Employee Profile
+        </h3>
+        <div>
+          <label className="block text-[11px] text-gray-600 mb-1.5 font-semibold">Select Employee</label>
+          <select
+            value={selectedEmpForTravel}
+            onChange={e => setSelectedEmpForTravel(e.target.value)}
+            className="w-full bg-white border border-gray-300 px-2 py-1.5 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-orange-500"
+          >
+            <option value="">— Select employee —</option>
+            {registeredEmployees.map(e => (
+              <option key={e.uid} value={e.uid}>{e.name} ({e.email})</option>
+            ))}
+          </select>
+        </div>
+        {selectedEmpForTravel && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Full Name</label>
+                <input type="text" value={editEmpName} onChange={e => setEditEmpName(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Phone Number</label>
+                <input type="tel" value={editEmpPhone} onChange={e => setEditEmpPhone(e.target.value)}
+                  placeholder="(555) 000-0000"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Job Title</label>
+                <input type="text" value={editEmpJobTitle} onChange={e => setEditEmpJobTitle(e.target.value)}
+                  placeholder="e.g. Field Technician"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Billable Rate ($/hr)</label>
+                <input type="number" min="0" step="0.01" value={editEmpRate} onChange={e => setEditEmpRate(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none focus:border-orange-500" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Home Address</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Start typing address..."
+                  value={travelHomeAddress}
+                  onChange={e => handleEditAddressInput(e.target.value)}
+                  onBlur={() => setTimeout(() => setEditAddressSuggestions([]), 200)}
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+                {editAddressSuggestions.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {editAddressSuggestions.map((f, i) => {
+                      const p = f.properties;
+                      const label = [
+                        p.housenumber && p.street ? `${p.housenumber} ${p.street}` : (p.street || p.name),
+                        p.city || p.county,
+                        p.state,
+                      ].filter(Boolean).join(', ');
+                      return (
+                        <button key={i} type="button" onMouseDown={() => handleEditSelectAddress(f)}
+                          className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-0">
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-1.5">
+                <div>
+                  <label className="block text-[9px] text-gray-400 mb-0.5">Latitude <span className="text-gray-300">(auto-filled)</span></label>
+                  <input type="number" step="0.000001" value={travelHomeLat || ''} onChange={e => setTravelHomeLat(Number(e.target.value))}
+                    placeholder="37.7749"
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[9px] text-gray-400 mb-0.5">Longitude <span className="text-gray-300">(auto-filled)</span></label>
+                  <input type="number" step="0.000001" value={travelHomeLng || ''} onChange={e => setTravelHomeLng(Number(e.target.value))}
+                    placeholder="-122.4194"
+                    className="w-full bg-white border border-gray-300 text-xs px-2 py-1.5 text-gray-900 rounded-lg font-mono focus:outline-none" />
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Reset Password <span className="text-gray-300">(leave blank to keep current)</span></label>
+              <div className="relative">
+                <input
+                  type={showEditEmpPassword ? 'text' : 'password'}
+                  value={editEmpPassword}
+                  onChange={e => setEditEmpPassword(e.target.value)}
+                  placeholder="New password (min 6 chars)..."
+                  className="w-full bg-white border border-gray-300 text-xs px-2.5 py-1.5 pr-8 text-gray-900 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+                <button type="button" onClick={() => setShowEditEmpPassword(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer">
+                  {showEditEmpPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              {editEmpPassword && <p className="text-[9px] text-amber-600 mt-0.5">Employee will be prompted to change this on next login.</p>}
+            </div>
+            <button type="button" onClick={handleSaveEditEmployee}
+              className="w-full bg-orange-600 hover:bg-orange-700 text-[10px] font-bold text-white uppercase px-3 py-2 rounded-lg active:translate-y-px cursor-pointer transition-all">
+              Save Employee Profile
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Employee Account Passwords */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">

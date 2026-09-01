@@ -59,13 +59,14 @@ export interface TimeEntry {
   jobName: string;
   costCode: string;
   description: string;
-  status: 'active' | 'completed' | 'pending_approval';
+  status: 'active' | 'completed' | 'pending_approval' | 'declined';
   clockInTime: any; // Firestore Timestamp
   clockInCoords: TimeEntryCoords;
   clockOutTime: any | null;
   clockOutCoords: TimeEntryCoords | null;
   travelTimeIn: number; // in minutes
   travelTimeOut: number; // in minutes
+  travelFromLabel?: string; // "Home" or name of previous job site this shift came from
   lunchStart: any | null; // break start timestamp
   lunchStartCoords: TimeEntryCoords | null;
   lunchEnd: any | null; // break end timestamp
@@ -74,13 +75,18 @@ export interface TimeEntry {
   isManualEdit: boolean;
   isApproved: boolean;
   editRequestedAt: any | null;
+  wasAutoClockedOut?: boolean;
+  adminIncludesTravel?: boolean; // admin override: false = exclude travel from billing (set when both clock-in and clock-out are off-site)
+  declineReason?: string | null;
   createdAt: any;
   updatedAt: any;
 }
 
 export interface AppSettings {
   id: string;
-  autoClockOutTime: string; // "18:00"
+  autoClockOutTime: string; // legacy — kept for backward compat
+  autoClockOutHoursAfterClockIn: number; // default 12 — hours after clock-in before auto clock-out fires
+  autoClockOutRevertHours: number; // default 7.5 — worked hours the entry reverts to on auto clock-out
   companyTravelCoverageMinutes: number; // default 30
   updatedAt: any;
 }
